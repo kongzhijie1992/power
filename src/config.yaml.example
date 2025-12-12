@@ -1,0 +1,10 @@
+# ENTSO-E API token (replace with your token in src/config.yaml)
+entsoe:
+  api_key: "YOUR_ENTSOE_API_KEY_HERE"
+  # preferred country code for demo (ISO/ENTSO-E bidding zone id), e.g. DE, FR, GB
+  default_area: DE
+
+# Data timeframe for demo (days of history to fetch)
+data:
+  history_days: 90
+  forecast_horizon_days: 7
