@@ -57,9 +57,10 @@ def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path
     # ENTSO-E API endpoint for day-ahead market prices
     url = "https://web-api.tp.entsoe.eu/api"
     
-    # Convert dates to ENTSO-E format (YYYYMMDDTHHMM)
-    start_ts = f"{start_date.replace('-', '')}T0000Z"
-    end_ts = f"{end_date.replace('-', '')}T2300Z"
+    # Convert dates to ENTSO-E format (YYYYMMDDHHMM + Z)
+    # Note: ENTSO-E expects YYYYMMDDHHMM format (12 chars + Z), not YYYYMMDDTHHMMZ
+    start_ts = f"{start_date.replace('-', '')}0000Z"
+    end_ts = f"{end_date.replace('-', '')}2300Z"
     
     params = {
         'securityToken': api_token,
