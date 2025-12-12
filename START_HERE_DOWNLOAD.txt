@@ -6,6 +6,9 @@
 
 Visit: **https://www.entsoe.eu/data/energy-prices-data/**
 
+> If your ENTSO-E API token is activated, you can skip manual downloads and fetch 2 years directly:
+> `python scripts/fetch_entsoe_data.py --area DE_LU --start-date 2023-01-01 --end-date 2024-12-31 --chunk-days 90 --output data/DE/day_ahead_real.csv --no-weather`
+
 **Download 2024:**
 - Area: Germany (DE)
 - Data: Day-ahead prices

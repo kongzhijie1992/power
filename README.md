@@ -47,13 +47,13 @@ copy src\config.yaml.example src\config.yaml
 3. Run end-to-end demo with synthetic data (no API key required):
 
 ```bash
-poetry run python scripts\run_forecast_with_gfs.py --area DE
+poetry run python scripts\run_forecast_with_gfs.py --area DE_LU
 ```
 
-4. Or use real ENTSO-E data:
+4. Or use real ENTSO-E data (default area DE_LU):
 
 ```bash
-poetry run python scripts\run_full_pipeline.py --area DE
+poetry run python scripts\run_full_pipeline.py --area DE_LU
 ```
 
 5. Try the unit-commitment solver:
@@ -74,7 +74,7 @@ under the `data/` folder.
 
 ```powershell
 # Windows (cmd/powershell)
-C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\fetch_sample_data.py --area DE --days 90
+C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\fetch_sample_data.py --area DE_LU --days 90
 ```
 
 2. Files created:
@@ -84,7 +84,7 @@ C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\fetch_sample_data.
 3. Run the full pipeline using the local files (no ENTSO‑E key required):
 
 ```powershell
-C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\run_full_pipeline.py --area DE
+C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\run_full_pipeline.py --area DE_LU
 ```
 
 If you prefer to provide your own price CSV, ensure it is saved to `data/<AREA>/day_ahead.csv` with

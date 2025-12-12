@@ -20,34 +20,40 @@ def _area_data_path(area: str):
     area_dir.mkdir(parents=True, exist_ok=True)
     parquet_path = area_dir / 'day_ahead.parquet'
     csv_path = area_dir / 'day_ahead.csv'
-    return parquet_path, csv_path
+    # real-data variants (preferred if present)
+    parquet_real = area_dir / 'day_ahead_real.parquet'
+    csv_real = area_dir / 'day_ahead_real.csv'
+    return parquet_path, csv_path, parquet_real, csv_real
 
 
 def load_existing(area: str) -> pd.Series:
-    pq, csv = _area_data_path(area)
-    if pq.exists():
+    pq, csv, pq_real, csv_real = _area_data_path(area)
+    candidates = [pq_real, csv_real, pq, csv]
+    for path in candidates:
+        if not path.exists():
+            continue
         try:
-            df = pd.read_parquet(pq)
-            s = df['value'] if 'value' in df.columns else df.iloc[:,0]
+            if path.suffix == '.parquet':
+                df = pd.read_parquet(path)
+            else:
+                df = pd.read_csv(path, index_col=0, parse_dates=True)
+            s = df['value'] if 'value' in df.columns else df.iloc[:, 0]
             s.index = pd.to_datetime(s.index)
             return s
         except Exception as e:
-            logger.warning('Failed to read parquet for %s: %s', area, e)
-    if csv.exists():
-        df = pd.read_csv(csv, index_col=0, parse_dates=True)
-        s = df['value'] if 'value' in df.columns else df.iloc[:,0]
-        return s
+            logger.warning('Failed to read %s for %s: %s', path.name, area, e)
+            continue
     return pd.Series(dtype='float64')
 
 
 def save_combined(series: pd.Series, area: str):
-    pq, csv = _area_data_path(area)
+    pq, csv, pq_real, csv_real = _area_data_path(area)
     df = series.to_frame('value')
     try:
-        df.to_parquet(pq)
+        df.to_parquet(pq_real)
     except Exception as e:
         logger.warning('Parquet write failed for %s: %s; falling back to CSV', area, e)
-        df.to_csv(csv)
+        df.to_csv(csv_real)
 
 
 def incremental_update(area: str, api_key: str = None, lookback_hours: int = 6, days_max: int = 365):

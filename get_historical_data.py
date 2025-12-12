@@ -26,7 +26,7 @@ import os
 
 
 def fetch_via_api(start_date, end_date):
-    """Attempt to fetch data via ENTSO-E API."""
+    """Attempt to fetch data via ENTSO-E API with multiple parameter combinations."""
     print("📡 Attempting to fetch via ENTSO-E API...")
     
     # Load token from .env
@@ -48,42 +48,66 @@ def fetch_via_api(start_date, end_date):
     
     print(f"✓ Token loaded: {token[:20]}...")
     
-    # Try to fetch day-ahead prices
-    # Document type: A44 (Day-ahead prices)
-    # Area: DE_LU (Germany-Luxembourg)
+    # Different region codes to try
+    regions = [
+        ('10Y1001A1001A82F', 'DE_LU (Germany-Luxembourg)'),  # Standard
+        ('10YDE-TENNET---QX', 'Germany TenneT'),
+        ('10YCB-GESY-----Y', 'Cyprus'),  # Test region
+    ]
     
     base_url = "https://web-api.tp.entsoe.eu/api"
     
-    # Format timestamps for API
-    start_str = start_date.strftime("%Y%m%d0000")
-    end_str = end_date.strftime("%Y%m%d0000")
-    
-    params = {
-        'securityToken': token,
-        'documentType': 'A44',
-        'In_Domain': '10Y1001A1001A82F',  # DE_LU
-        'Out_Domain': '10Y1001A1001A82F',
-        'periodStart': start_str,
-        'periodEnd': end_str,
-    }
-    
     print(f"Fetching {start_date.date()} to {end_date.date()}...")
+    print(f"Document type: A44 (Day-ahead prices)\n")
     
-    try:
-        response = requests.get(base_url, params=params, timeout=30)
-        print(f"API Response: {response.status_code}")
-        
-        if response.status_code == 200:
-            print("✅ Successfully fetched data via API!")
-            # Parse XML response and convert to CSV
-            return response.text
-        else:
-            print(f"⚠️  API returned {response.status_code}")
-            print(f"   Message: {response.text[:200]}")
-            return None
-    except Exception as e:
-        print(f"❌ API request failed: {e}")
-        return None
+    # Try different timestamp formats
+    timestamp_formats = [
+        lambda d: d.strftime("%Y%m%d0000"),  # YYYYMMDDHHMM
+        lambda d: d.strftime("%Y%m%d"),      # YYYYMMDD
+    ]
+    
+    for region_code, region_name in regions:
+        for fmt_idx, fmt_func in enumerate(timestamp_formats):
+            try:
+                start_str = fmt_func(start_date)
+                end_str = fmt_func(end_date)
+                
+                params = {
+                    'securityToken': token,
+                    'documentType': 'A44',
+                    'In_Domain': region_code,
+                    'Out_Domain': region_code,
+                    'periodStart': start_str,
+                    'periodEnd': end_str,
+                }
+                
+                fmt_name = "YYYYMMDDHHMM" if fmt_idx == 0 else "YYYYMMDD"
+                print(f"  Trying {region_name} with {fmt_name}...", end=' ')
+                
+                response = requests.get(base_url, params=params, timeout=30)
+                print(f"Status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    print(f"\n✅ Successfully fetched data via API!")
+                    print(f"   Region: {region_name}")
+                    print(f"   Format: {fmt_name}")
+                    return response.text
+                elif response.status_code == 400:
+                    # Try next combination
+                    continue
+                else:
+                    print(f"   Message: {response.text[:100]}")
+                    
+            except Exception as e:
+                print(f"   Error: {str(e)[:50]}")
+                continue
+    
+    print(f"\n❌ API returned errors for all region/format combinations")
+    print(f"   Possible causes:")
+    print(f"   - Token not yet activated for production (contact ENTSOE)")
+    print(f"   - API access requires different setup")
+    print(f"   - Region code may have changed")
+    return None
 
 
 def show_gui_instructions():

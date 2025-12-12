@@ -24,6 +24,7 @@ from src.ingest.ingest_all import synthetic_area_series
 from src.ingest.incremental_ingest import load_existing, save_combined
 from src.models.forecast_cv import cv_train_lgbm, quantile_models_train, predict_with_model, predict_quantile
 from src.models.backtest import walk_forward_backtest
+from src.data.io import load_price_series
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,12 +33,20 @@ logger = logging.getLogger(__name__)
 def load_or_create_data(area: str, days: int = 90) -> pd.Series:
     """Load persisted data or create synthetic."""
     try:
-        series = load_existing(area)
+        series = load_price_series(area)
         if len(series) > 0:
             logger.info('Loaded %d points for %s', len(series), area)
             return series
     except Exception as e:
-        logger.warning('Failed to load persisted data: %s', e)
+        logger.warning('Failed to load persisted price data: %s', e)
+    # fallback to older ingest storage
+    try:
+        series = load_existing(area)
+        if len(series) > 0:
+            logger.info('Loaded %d points for %s via legacy path', len(series), area)
+            return series
+    except Exception:
+        pass
     # create synthetic
     logger.info('Generating synthetic data for %s', area)
     series = synthetic_area_series(area, days=days)
