@@ -64,6 +64,35 @@ poetry run python scripts\run_uc_demo.py
 
 See `notebooks/example_workflow.md` for a full walkthrough.
 
+Sample data and quick local setup
+---------------------------------
+If you don't have an ENTSO‑E API key yet, use the included helper to generate synthetic prices
+and download Open‑Meteo weather (no API key required). This creates files the code expects
+under the `data/` folder.
+
+1. Generate sample data for the `DE` zone (90 days):
+
+```powershell
+# Windows (cmd/powershell)
+C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\fetch_sample_data.py --area DE --days 90
+```
+
+2. Files created:
+- `data/DE/day_ahead.csv` — hourly price series with a `value` column and ISO datetime index (UTC)
+- `data/weather/DE_weather.csv` — hourly `windspeed_10m` and `shortwave_radiation` from Open‑Meteo
+
+3. Run the full pipeline using the local files (no ENTSO‑E key required):
+
+```powershell
+C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\run_full_pipeline.py --area DE
+```
+
+If you prefer to provide your own price CSV, ensure it is saved to `data/<AREA>/day_ahead.csv` with
+an ISO datetime index and a column named `value`.
+
+Want to use a different weather provider or file? See `scripts/fetch_sample_data.py` for how the
+Open‑Meteo CSV is formatted; the pipeline will use local weather CSVs where available.
+
 What you get
 ------------
 
