@@ -1,4 +1,17 @@
-.vscode
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+# Optional virtualenv
+.venv/
+
+# Ignore raw ENTSOE GUI exports and generated seq CSVs
+data/DE/GUI_ENERGY_PRICES_*.csv
+data/DE/*_seq*.csv
+
+# Environment variables (API tokens, secrets)
+.env
+.env.local
+.env.*.local.vscode
 .vscode/
 .DS_Store
 .idea
