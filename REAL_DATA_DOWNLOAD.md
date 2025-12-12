@@ -6,6 +6,25 @@ Replace sample 2-year data with real ENTSOE prices (2023-2024)
 **Time Required:** ~15-20 minutes
 **Difficulty:** Very Easy (just downloading files)
 
+> Prefer API over manual downloads? If your ENTSO-E token is activated, you can now pull the full 2-year range in chunked API calls:
+> ```bash
+> # Fetch 2023-01-01 → 2024-12-31 in 90-day chunks
+> python scripts/fetch_entsoe_data.py --area DE_LU --start-date 2023-01-01 --end-date 2024-12-31 --chunk-days 90 --output data/DE/day_ahead_real.csv --no-weather
+> ```
+> After the fetch, run `python check_data.py` and `pytest -q` to verify.
+
+> Need multiple regions at once? Use `--areas` and the script will write one CSV per area under `data/<AREA>/`:
+> ```bash
+> python scripts/fetch_entsoe_data.py --areas DE_LU FR ES --start-date 2023-01-01 --end-date 2024-12-31 --chunk-days 90 --no-weather
+> ```
+> Current multi-region pulls fetched (rows / date range):
+> - DE_LU: 25,944 rows, 2022-12-31 → 2025-12-16
+> - FR: 25,579 rows, 2022-12-31 → 2025-12-16
+> - IT: 25,115 rows, 2022-12-31 → 2025-12-16
+> - ES: 24,178 rows, 2022-12-31 → 2025-12-16
+> - NL: 25,797 rows, 2022-12-31 → 2025-12-16
+> - BE: 25,862 rows, 2022-12-31 → 2025-12-16
+
 ## Step-by-Step Guide
 
 ### 1️⃣ Download 2024 Data (5 minutes)

@@ -18,7 +18,7 @@ import pandas as pd
 from src.ingest.ingest_all import synthetic_area_series, fetch_and_persist_all
 from src.models.forecast_cv import cv_train_lgbm, predict_with_model
 from src.dispatch.zonal_dispatch import dispatch_series_with_mix
-from src.data.io import save_series_csv
+from src.data.io import save_series_csv, load_price_series
 
 
 logging.basicConfig(level=logging.INFO)
@@ -38,12 +38,16 @@ def main(area: str, synthetic: bool = True):
         api_key = (cfg.get('entsoe') or {}).get('api_key')
         if not api_key:
             raise ValueError('No ENTSO-E key available in config — run with --synthetic')
-        fetch_and_persist_all(api_key=api_key, areas=[area], days=90)
-        from src.data.io import load_series_csv
-        prices = load_series_csv(area)
+        # prefer existing real data on disk; fall back to fetching if missing
+        try:
+            prices = load_price_series(area)
+        except FileNotFoundError:
+            fetch_and_persist_all(api_key=api_key, areas=[area], days=90)
+            prices = load_price_series(area)
 
     # Persist fetched/generated prices
-    save_series_csv(prices, area)
+    if synthetic:
+        save_series_csv(prices, area)
 
     # Train CV model (if available)
     model, stats = cv_train_lgbm(prices)
