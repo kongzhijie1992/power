@@ -96,7 +96,8 @@ def prepare_demand_features(load: pd.Series, weather: pd.DataFrame = None, add_l
     if weather is not None:
         w = _augment_temperature_features(weather)
         if isinstance(w.index, pd.DatetimeIndex):
-            w = w.reindex(load.index).ffill().bfill()
+            # Avoid backfilling with future values; fill missing with 0 as a neutral fallback.
+            w = w.reindex(load.index).ffill().fillna(0)
         feats = pd.concat([feats, w], axis=1)
     if add_lags:
         for lag in add_lags:
@@ -250,7 +251,8 @@ def compute_residual_demand(load: pd.Series, weather: pd.DataFrame) -> pd.Series
       - wind_gen = wind_speed (m/s) * 300 (MW proxy)
       - solar_gen = shortwave_radiation (W/m2) * 0.5 (MW proxy)
     """
-    w = weather.reindex(load.index).ffill().bfill()
+    # Avoid backfilling with future values; fill missing with 0 as a neutral fallback.
+    w = weather.reindex(load.index).ffill().fillna(0)
     wind_col = None
     for cand in ["wind_speed", "windspeed_10m"]:
         if cand in w.columns:
@@ -285,18 +287,19 @@ def prepare_error_features(
 
     feats = _calendar_features(df.index, country=country)
     if weather is not None:
-        w = _augment_temperature_features(weather).reindex(df.index).ffill().bfill()
+        w = _augment_temperature_features(weather).reindex(df.index).ffill().fillna(0)
         feats = pd.concat([feats, w], axis=1)
     feats["forecast"] = df["forecast"]
     # forecast lags/ramps
     feats["forecast_lag_1h"] = df["forecast"].shift(freq=pd.Timedelta(hours=1))
     feats["forecast_lag_24h"] = df["forecast"].shift(freq=pd.Timedelta(hours=24))
-    feats["forecast_ramp_1h"] = df["forecast"].diff().shift(-1)  # forward diff at t+1
+    # Use backward-looking ramps (t - t-1) to avoid leakage from future values.
+    feats["forecast_ramp_1h"] = df["forecast"].diff()
     feats["forecast_ramp_24h"] = df["forecast"] - df["forecast"].shift(freq=pd.Timedelta(hours=24))
     # actual load lags/ramps
     feats["actual_lag_1h"] = df["actual"].shift(freq=pd.Timedelta(hours=1))
     feats["actual_lag_24h"] = df["actual"].shift(freq=pd.Timedelta(hours=24))
-    feats["actual_ramp_1h"] = df["actual"].diff().shift(-1)
+    feats["actual_ramp_1h"] = df["actual"].diff()
     feats["actual_ramp_24h"] = df["actual"] - df["actual"].shift(freq=pd.Timedelta(hours=24))
 
     if add_lags:
@@ -323,7 +326,7 @@ def build_future_error_features(
     forecast = forecast.sort_index()
     feats = _calendar_features(forecast.index, country=country)
     if weather is not None:
-        feats = pd.concat([feats, _augment_temperature_features(weather).reindex(forecast.index).ffill().bfill()], axis=1)
+        feats = pd.concat([feats, _augment_temperature_features(weather).reindex(forecast.index).ffill().fillna(0)], axis=1)
     feats["forecast"] = forecast
 
     if add_lags and error_history is not None:
@@ -334,4 +337,5 @@ def build_future_error_features(
         for lag in add_lags:
             lag_delta = pd.Timedelta(hours=lag)
             feats[f"error_lag_{lag}h"] = hist_full.shift(freq=lag_delta).reindex(forecast.index)
-    return feats.ffill().bfill()
+    # Forward-fill only; never backfill time-series features with future values.
+    return feats.ffill().fillna(0)

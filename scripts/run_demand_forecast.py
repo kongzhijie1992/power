@@ -60,7 +60,8 @@ def _train_direct_model(area: str, days: int, weather_path: str):
 
     future_index = pd.date_range(load_series.index.max() + pd.Timedelta(hours=1), periods=24 * 2, freq="h")
     combined_index = load_series.index.append(future_index)
-    combined_weather = weather_df.reindex(combined_index).ffill().bfill()
+    # Avoid backfilling with future values; fill missing with 0 as a neutral fallback.
+    combined_weather = weather_df.reindex(combined_index).ffill().fillna(0)
 
     def build_features(idx: pd.DatetimeIndex) -> pd.DataFrame:
         feats = df_mod._calendar_features(idx)
@@ -70,7 +71,7 @@ def _train_direct_model(area: str, days: int, weather_path: str):
             feats[f"lag_{lag}h"] = shifted.loc[idx]
         return feats
 
-    X_future = build_features(future_index).ffill().bfill()
+    X_future = build_features(future_index).ffill().fillna(0)
     forecasts = predict_demand(mean_model, X_future, q_models)
     out = pd.DataFrame(index=future_index)
     out["corrected_mean"] = forecasts["mean"]
