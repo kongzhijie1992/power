@@ -212,7 +212,13 @@ def build_app():
                     html.Div(
                         [
                             html.Label("Bidding zone"),
-                            dcc.Dropdown(id="area", options=[{"label": a, "value": a} for a in areas], value=default_area, clearable=False),
+                            dcc.Dropdown(
+                                id="area",
+                                options=[{"label": a, "value": a} for a in areas],
+                                value=default_area,
+                                clearable=False,
+                                maxHeight=600,
+                            ),
                         ],
                         style={"width": "240px", "marginRight": "12px"},
                     ),
