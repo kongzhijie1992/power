@@ -65,8 +65,8 @@ def add_gfs_features(history_index: pd.DatetimeIndex, lat: float, lon: float, va
                     colmap['10v'] = '10v'
 
                 dfw = dfw.rename(columns=colmap)
-                # Reindex to history_index and forward/backfill
-                df = dfw.reindex(history_index).ffill().bfill()
+                # Reindex to history_index and forward-fill only (avoid future leakage); fill remaining with 0.
+                df = dfw.reindex(history_index).ffill().fillna(0)
                 # If wind components present, compute wind_speed
                 if '10u' in df.columns and '10v' in df.columns and 'wind_speed' not in df.columns:
                     df['wind_speed'] = (df['10u'] ** 2 + df['10v'] ** 2) ** 0.5
@@ -102,7 +102,8 @@ def add_gfs_features(history_index: pd.DatetimeIndex, lat: float, lon: float, va
         if not df_list:
             raise RuntimeError('No vars extracted from GFS')
         df = pd.concat(df_list, axis=1).reindex(history_index, fill_value=None)
-        df = df.ffill().bfill()
+        # Forward-fill only (avoid future leakage); fill remaining with 0.
+        df = df.ffill().fillna(0)
         # compute wind speed if u/v provided
         if '10u' in df.columns and '10v' in df.columns:
             df['wind_speed'] = (df['10u']**2 + df['10v']**2)**0.5
