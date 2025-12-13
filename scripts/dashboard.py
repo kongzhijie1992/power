@@ -30,6 +30,10 @@ from src.data.io import load_demand_series, load_tso_forecast_series
 DATA_DIR = Path("data")
 
 
+def _default_area(areas):
+    return "DE_LU" if "DE_LU" in areas else (areas[0] if areas else None)
+
+
 def _read_csv_or_parquet(path: Path) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(path)
@@ -199,69 +203,104 @@ def build_error_figure(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def build_app():
+def build_app(refresh_seconds: int = 0):
     areas = sorted([p.name for p in DATA_DIR.iterdir() if p.is_dir() and (p / "demand_forecast.csv").exists()])
-    default_area = areas[0] if areas else None
+    default_area = _default_area(areas)
 
     app = dash.Dash(__name__)
     app.layout = html.Div(
         [
             html.H2("Demand forecast dashboard"),
+            dcc.Interval(
+                id="refresh-interval",
+                interval=max(int(refresh_seconds), 1) * 1000,
+                n_intervals=0,
+                disabled=(not refresh_seconds),
+            ),
             html.Div(
                 [
                     html.Div(
                         [
                             html.Label("Bidding zone"),
-                            dcc.Dropdown(
-                                id="area",
-                                options=[{"label": a, "value": a} for a in areas],
-                                value=default_area,
-                                clearable=False,
-                                maxHeight=600,
+                            html.Div(
+                                dcc.RadioItems(
+                                    id="area",
+                                    options=[{"label": a, "value": a} for a in areas],
+                                    value=default_area,
+                                    labelStyle={"display": "block", "padding": "2px 0"},
+                                    inputStyle={"marginRight": "6px"},
+                                ),
+                                style={
+                                    "border": "1px solid #ddd",
+                                    "borderRadius": "4px",
+                                    "padding": "6px 8px",
+                                    "maxHeight": "520px",
+                                    "overflowY": "auto",
+                                    "backgroundColor": "white",
+                                },
                             ),
                         ],
-                        style={"width": "240px", "marginRight": "12px"},
+                        style={"width": "260px", "flexShrink": 0},
                     ),
                     html.Div(
                         [
-                            html.Label("Time horizon"),
-                            dcc.Dropdown(
-                                id="horizon",
-                                options=[
-                                    {"label": "Last 7 days", "value": "7d"},
-                                    {"label": "Last 30 days", "value": "30d"},
-                                    {"label": "Last 90 days", "value": "90d"},
-                                    {"label": "Last 180 days", "value": "180d"},
-                                    {"label": "Last 365 days", "value": "365d"},
-                                    {"label": "All history", "value": "all"},
+                            html.Div(
+                                [
+                                    html.Div(
+                                        [
+                                            html.Label("Time horizon"),
+                                            dcc.Dropdown(
+                                                id="horizon",
+                                                options=[
+                                                    {"label": "Last 7 days", "value": "7d"},
+                                                    {"label": "Last 30 days", "value": "30d"},
+                                                    {"label": "Last 90 days", "value": "90d"},
+                                                    {"label": "Last 180 days", "value": "180d"},
+                                                    {"label": "Last 365 days", "value": "365d"},
+                                                    {"label": "All history", "value": "all"},
+                                                ],
+                                                value="90d",
+                                                clearable=False,
+                                            ),
+                                        ],
+                                        style={"width": "180px"},
+                                    ),
+                                    html.Div(
+                                        [
+                                            html.Label("Start date / time"),
+                                            dcc.DatePickerSingle(id="start-date", display_format="YYYY-MM-DD"),
+                                            dcc.Input(
+                                                id="start-time",
+                                                type="time",
+                                                placeholder="HH:MM",
+                                                style={"width": "120px", "marginLeft": "6px"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        [
+                                            html.Label("End date / time"),
+                                            dcc.DatePickerSingle(id="end-date", display_format="YYYY-MM-DD"),
+                                            dcc.Input(
+                                                id="end-time",
+                                                type="time",
+                                                placeholder="HH:MM",
+                                                style={"width": "120px", "marginLeft": "6px"},
+                                            ),
+                                        ],
+                                    ),
                                 ],
-                                value="90d",
-                                clearable=False,
+                                style={"display": "flex", "flexWrap": "wrap", "gap": "12px", "marginBottom": "8px"},
                             ),
+                            dcc.Graph(id="series-graph"),
+                            dcc.Graph(id="error-graph"),
+                            html.Div(id="meta-text", style={"marginTop": "8px", "fontSize": "12px", "color": "#444"}),
                         ],
-                        style={"width": "180px", "marginRight": "12px"},
-                    ),
-                    html.Div(
-                        [
-                            html.Label("Start date / time"),
-                            dcc.DatePickerSingle(id="start-date", display_format="YYYY-MM-DD"),
-                            dcc.Input(id="start-time", type="time", placeholder="HH:MM", style={"width": "120px", "marginLeft": "6px"}),
-                        ],
-                        style={"marginRight": "12px"},
-                    ),
-                    html.Div(
-                        [
-                            html.Label("End date / time"),
-                            dcc.DatePickerSingle(id="end-date", display_format="YYYY-MM-DD"),
-                            dcc.Input(id="end-time", type="time", placeholder="HH:MM", style={"width": "120px", "marginLeft": "6px"}),
-                        ],
+                        style={"minWidth": "480px", "flex": "1 1 auto"},
                     ),
                 ],
-                style={"display": "flex", "flexWrap": "wrap", "gap": "8px", "marginBottom": "8px"},
+                style={"display": "flex", "gap": "16px", "alignItems": "flex-start", "flexWrap": "wrap"},
             ),
-            dcc.Graph(id="series-graph"),
-            dcc.Graph(id="error-graph"),
-            html.Div(id="meta-text", style={"marginTop": "8px", "fontSize": "12px", "color": "#444"}),
         ],
         style={"maxWidth": "1400px", "margin": "0 auto", "padding": "8px 8px 4px 8px"},
     )
@@ -275,9 +314,10 @@ def build_app():
             Input("start-time", "value"),
             Input("end-date", "date"),
             Input("end-time", "value"),
+            Input("refresh-interval", "n_intervals"),
         ],
     )
-    def update_graphs(area, horizon, start_date, start_time, end_date, end_time):
+    def update_graphs(area, horizon, start_date, start_time, end_date, end_time, _n):
         if not area:
             return go.Figure(), go.Figure(), "No area selected"
         try:
@@ -319,6 +359,9 @@ def build_app():
             except Exception:
                 pass
 
+        if df.empty:
+            return go.Figure(), go.Figure(), f"{area}: no data for selected range"
+
         fig_series = build_series_figure(df, quantiles)
         fig_error = build_error_figure(df)
         meta_parts = [f"{area}: {len(df):,} points", f"{df.index.min()} → {df.index.max()}"]
@@ -338,6 +381,55 @@ def build_app():
 
 
 if __name__ == "__main__":
-    dash_app = build_app()
-    print("Starting dashboard on http://0.0.0.0:8050 (or http://127.0.0.1:8050 locally)")
-    dash_app.run(host="0.0.0.0", port=8050, debug=False)
+    import argparse
+    import subprocess
+    import os
+
+    def _find_listening_pids(port: int) -> set[int]:
+        try:
+            out = subprocess.check_output(["netstat", "-ano"], text=True, encoding="utf-8", errors="ignore")
+        except Exception:
+            return set()
+        pids: set[int] = set()
+        for line in out.splitlines():
+            if "LISTENING" not in line.upper():
+                continue
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            local = parts[1]
+            state = parts[3].upper()
+            pid_str = parts[4]
+            if state != "LISTENING":
+                continue
+            if not (local.endswith(f":{port}") or local.endswith(f"]:{port}")):
+                continue
+            try:
+                pids.add(int(pid_str))
+            except ValueError:
+                continue
+        return pids
+
+    def _kill_pids(pids: set[int]) -> None:
+        for pid in sorted(pids):
+            try:
+                subprocess.check_call(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"Killed process PID {pid} (was listening on dashboard port).")
+            except Exception as e:
+                print(f"Failed to kill PID {pid}: {e}")
+
+    p = argparse.ArgumentParser()
+    p.add_argument("--host", default="127.0.0.1", help="Host to bind (use 0.0.0.0 to allow LAN access)")
+    p.add_argument("--port", type=int, default=8050)
+    p.add_argument("--dev", action="store_true", help="Enable Dash dev tools (hot reload)")
+    p.add_argument("--kill-port", action="store_true", help="Kill any process currently listening on --port before starting")
+    p.add_argument("--refresh-seconds", type=int, default=0, help="Auto-refresh charts every N seconds (0 disables)")
+    args = p.parse_args()
+
+    if args.kill_port:
+        _kill_pids(_find_listening_pids(args.port))
+
+    dash_app = build_app(refresh_seconds=max(int(args.refresh_seconds), 0))
+    url = f"http://{args.host}:{args.port}"
+    print(f"Starting dashboard on {url}")
+    dash_app.run(host=args.host, port=args.port, debug=bool(args.dev))
