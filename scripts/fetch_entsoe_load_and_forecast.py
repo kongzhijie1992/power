@@ -107,6 +107,20 @@ def _normalize_index(idx: pd.DatetimeIndex) -> pd.DatetimeIndex:
     return idx
 
 
+def _read_ts_csv(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, parse_dates=["datetime"])
+    df = df.set_index("datetime")
+    df.index = pd.to_datetime(df.index, errors="coerce")
+    df = df[~df.index.isna()]
+    return df
+
+
+def _merge_timeseries(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    combined = pd.concat([existing, new], axis=0)
+    combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+    return combined
+
+
 def fetch_load_and_forecast(client, area: str, start_date, end_date) -> Tuple[pd.Series, pd.Series]:
     """Return actual load + day-ahead forecast as two Series (UTC-naive)."""
     start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize("Europe/Brussels")
@@ -178,6 +192,7 @@ def main():
     p.add_argument("--end-date", default=dt.date.today().isoformat())
     p.add_argument("--chunk-days", type=int, default=90)
     p.add_argument("--parquet", action="store_true", help="Also write Parquet")
+    p.add_argument("--merge-existing", action="store_true", help="Merge fetched window into existing CSVs instead of overwriting")
     args = p.parse_args()
 
     api_token = os.getenv("ENTSOE_API_TOKEN")
@@ -232,14 +247,30 @@ def main():
 
         actual_csv = area_dir / "load_actual.csv"
         forecast_csv = area_dir / "load_forecast.csv"
-        actual_df.to_csv(actual_csv, index_label="datetime")
-        forecast_df.to_csv(forecast_csv, index_label="datetime")
-        print(f"✅ Saved actual -> {actual_csv} ({len(actual):,} rows)")
-        print(f"✅ Saved forecast -> {forecast_csv} ({len(forecast):,} rows)")
+        to_write_actual = actual_df
+        to_write_forecast = forecast_df
+        if args.merge_existing:
+            if actual_csv.exists():
+                try:
+                    old = _read_ts_csv(actual_csv)
+                    to_write_actual = _merge_timeseries(old, actual_df)
+                except Exception as e:
+                    print(f"⚠️  Failed to merge existing actual load for {area}: {e}; overwriting.")
+            if forecast_csv.exists():
+                try:
+                    old = _read_ts_csv(forecast_csv)
+                    to_write_forecast = _merge_timeseries(old, forecast_df)
+                except Exception as e:
+                    print(f"⚠️  Failed to merge existing forecast load for {area}: {e}; overwriting.")
+
+        to_write_actual.to_csv(actual_csv, index_label="datetime")
+        to_write_forecast.to_csv(forecast_csv, index_label="datetime")
+        print(f"✅ Saved actual -> {actual_csv} ({len(to_write_actual):,} rows)")
+        print(f"✅ Saved forecast -> {forecast_csv} ({len(to_write_forecast):,} rows)")
 
         if args.parquet:
-            actual_df.to_parquet(area_dir / "load_actual.parquet")
-            forecast_df.to_parquet(area_dir / "load_forecast.parquet")
+            to_write_actual.to_parquet(area_dir / "load_actual.parquet")
+            to_write_forecast.to_parquet(area_dir / "load_forecast.parquet")
 
 
 if __name__ == "__main__":

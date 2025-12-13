@@ -57,6 +57,22 @@ def _chunk_date_ranges(start_date: dt.date, end_date: dt.date, chunk_days: int) 
         cursor = chunk_end + dt.timedelta(days=1)
 
 
+def _read_indexed_csv_utc(path: Path) -> pd.DataFrame:
+    """Read a CSV written with a datetime index (index_col=0) and return df with DatetimeIndex (UTC)."""
+    df = pd.read_csv(path, index_col=0, parse_dates=True)
+    df.index = pd.to_datetime(df.index, utc=True, errors="coerce")
+    df = df[~df.index.isna()]
+    df.index.name = "datetime"
+    return df
+
+
+def _merge_timeseries(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    """Concat, sort, drop duplicate timestamps (keep newest/new)."""
+    combined = pd.concat([existing, new], axis=0)
+    combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+    return combined
+
+
 def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path=None):
     """Fetch day-ahead prices from ENTSO-E API and return a DataFrame."""
     # ENTSO-E area code mappings (EIC codes)
@@ -202,7 +218,7 @@ def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path
         raise SystemExit("Invalid ENTSO-E response format")
 
 
-def download_open_meteo(lat, lon, start_date, end_date, out_csv_path):
+def download_open_meteo(lat, lon, start_date, end_date, out_csv_path, merge_existing: bool = False):
     """Download weather data from Open-Meteo archive (no API key required)."""
     url = (
         "https://archive-api.open-meteo.com/v1/archive"
@@ -226,11 +242,29 @@ def download_open_meteo(lat, lon, start_date, end_date, out_csv_path):
     df['time'] = pd.to_datetime(df['time'])
     df = df.set_index('time')
     
-    out_dir = Path(out_csv_path).parent
-    out_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv_path)
-    print(f"Saved weather to {out_csv_path}")
-    return out_csv_path
+    out_path = Path(out_csv_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    df.index = pd.to_datetime(df.index, errors="coerce")
+    df = df[~df.index.isna()]
+    df.index.name = "time"
+
+    if merge_existing and out_path.exists():
+        try:
+            old = pd.read_csv(out_path, index_col=0, parse_dates=True)
+            old.index = pd.to_datetime(old.index, errors="coerce")
+            old = old[~old.index.isna()]
+            old.index.name = "time"
+            merged = _merge_timeseries(old, df)
+            merged.to_csv(out_path)
+            print(f"Merged weather -> {out_path} ({len(merged):,} rows)")
+            return merged
+        except Exception as e:
+            print(f"⚠️  Failed to merge existing weather from {out_path}: {e}; overwriting.")
+
+    df.to_csv(out_path)
+    print(f"Saved weather to {out_path}")
+    return df
 
 
 def main():
@@ -247,6 +281,7 @@ def main():
     p.add_argument('--no-weather', action='store_true', help='Skip weather download')
     p.add_argument('--skip-price', action='store_true', help='Skip price download (useful for weather-only updates)')
     p.add_argument('--weather-only', action='store_true', help='Alias for --skip-price (fetch only weather)')
+    p.add_argument('--merge-existing', action='store_true', help='Merge fetched data into existing CSVs instead of overwriting')
     args = p.parse_args()
 
     api_token = os.getenv('ENTSOE_API_TOKEN')
@@ -336,10 +371,20 @@ def main():
             end_ts = pd.Timestamp(end_date + dt.timedelta(days=1)).tz_localize('UTC') - pd.Timedelta(hours=1)
             combined = combined[(combined.index >= start_ts) & (combined.index <= end_ts)]
             price_csv.parent.mkdir(parents=True, exist_ok=True)
-            combined.to_csv(price_csv)
-            print(f"\n✅ Saved merged ENTSO-E data to {price_csv}")
-            print(f"   Rows: {len(combined):,}")
-            print(f"   Range: {combined.index[0]} → {combined.index[-1]}")
+
+            to_write = combined
+            if args.merge_existing and price_csv.exists():
+                try:
+                    existing = _read_indexed_csv_utc(price_csv)
+                    to_write = _merge_timeseries(existing, combined)
+                except Exception as e:
+                    print(f"⚠️  Failed to merge existing prices from {price_csv}: {e}; overwriting.")
+                    to_write = combined
+
+            to_write.to_csv(price_csv)
+            print(f"\n✅ Saved ENTSO-E prices to {price_csv}")
+            print(f"   Rows: {len(to_write):,}")
+            print(f"   Range: {to_write.index[0]} → {to_write.index[-1]}")
         else:
             print("⏭️  Skipping price download for this area (skip-price/weather-only).")
 
@@ -352,7 +397,14 @@ def main():
             weather_csv = weather_dir / f"{area}_weather.csv"
             
             try:
-                download_open_meteo(lat, lon, start_date.isoformat(), end_date.isoformat(), weather_csv)
+                download_open_meteo(
+                    lat,
+                    lon,
+                    start_date.isoformat(),
+                    end_date.isoformat(),
+                    weather_csv,
+                    merge_existing=args.merge_existing,
+                )
             except Exception as e:
                 print(f'Weather download failed: {e}')
                 print('You can still run the pipeline using synthetic weather proxies.')
