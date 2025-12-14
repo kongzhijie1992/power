@@ -31,14 +31,14 @@ Key Facts:
    ✓ Spring forward (March 30, 2025): 49 hours, no gaps
    ✓ Fall back (Oct 26, 2025): 49 hours, no gaps
    ✓ ENTSOE client DST conversion: Verified
-   ✓ All 84 tests passing
+   ✓ All 87 tests passing (3 DST-specific)
 
 Where DST is Handled:
 --------------------
 
 [src/ingest/entsoe_client.py]
   - Converts ENTSOE API data (Europe/Berlin) to UTC
-  - Line 50: series.tz_convert('UTC').tz_localize(None)
+  - Uses series.tz_convert('UTC').tz_localize(None)
 
 [scripts/convert_entsoe.py]
   - Resamples 15-min data to hourly
@@ -100,7 +100,7 @@ Testing DST
 -----------
 
 Run DST-specific tests:
-  pytest tests/test_dst_handling.py -v
+  .venv\Scripts\pytest tests/test_dst_handling.py -v
 
 Output:
   test_dst_spring_forward_2025 PASSED
@@ -108,8 +108,8 @@ Output:
   test_entsoe_client_dst_handling PASSED
 
 Run all tests (including DST):
-  pytest -q
-  84 passed in 8.47s
+  .venv\Scripts\pytest -q
+  87 passed (pytest)
 
 Conclusion
 ----------

@@ -1,78 +1,35 @@
-# 🚀 Ready to Download Real ENTSOE Data
+# 🚀 Real ENTSO-E Data Is Ready
 
-## What to Do Now
+You already have ~3 years of real prices + weather + load. Use this checklist only if you need to refresh.
 
-### Step 1: Download Files (15 minutes)
+## Fast Path (API, recommended)
 
-Visit: **https://www.entsoe.eu/data/energy-prices-data/**
-
-> If your ENTSO-E API token is activated, you can skip manual downloads and fetch 2 years directly:
-> `python scripts/fetch_entsoe_data.py --area DE_LU --start-date 2023-01-01 --end-date 2024-12-31 --chunk-days 90 --output data/DE/day_ahead_real.csv --no-weather`
-
-**Download 2024:**
-- Area: Germany (DE)
-- Data: Day-ahead prices
-- Dates: 01/01/2024 to 31/12/2024
-- Save as: `GUI_2024.csv`
-
-**Download 2023:**
-- Same settings, but dates: 01/01/2023 to 31/12/2023
-- Save as: `GUI_2023.csv`
-
-### Step 2: Run Auto-Processor (30 seconds)
-
-In PowerShell, go to the power directory and run:
 ```powershell
-python process_real_data.py
+python scripts/fetch_entsoe_data.py ^
+  --areas DE_LU FR IT ES NL BE ^
+  --start-date 2023-01-01 --end-date 2025-12-31 ^
+  --chunk-days 60 --merge-existing
 ```
 
-This will:
-- ✅ Verify files were downloaded
-- ✅ Merge them into production format
-- ✅ Replace sample data with real data
-- ✅ Run all 84 tests
-- ✅ Confirm everything works
+Then verify:
+```powershell
+python check_data.py
+.venv\Scripts\pytest -q   # 87 tests
+```
 
-### That's It! 
+## GUI Fallback (if token unavailable)
+- Download 2024 + 2023 from https://www.entsoe.eu/data/energy-prices-data/ (Day-ahead prices, DE)
+- Run:
+  ```powershell
+  python scripts/merge_years.py --input1 GUI_2024.csv --input2 GUI_2023.csv --output data\DE_LU\day_ahead.csv --sequence 1
+  python check_data.py
+  .venv\Scripts\pytest -q
+  ```
 
-Real ENTSOE data will be installed and ready to use.
+## Quick Links
+- Guide: `REAL_DATA_DOWNLOAD.md`
+- Validator: `python check_data.py`
+- Inventory: `python scripts/summarize_datasets.py`
+- API help: `python scripts/diagnose_entsoe.py`
 
----
-
-## Available Tools
-
-| Tool | Purpose | Command |
-|------|---------|---------|
-| Download Guide | Step-by-step | `python get_historical_data.py gui` |
-| Process Data | Auto-merge & verify | `python process_real_data.py` |
-| Check Data | View statistics | `python check_data.py` |
-| Detailed Guide | Complete walkthrough | `cat REAL_DATA_DOWNLOAD.md` |
-
----
-
-## Files Ready to Use
-
-**When you run `process_real_data.py`:**
-- Input: `GUI_2024.csv` + `GUI_2023.csv` (your downloads)
-- Output: `data/DE/day_ahead.csv` (replaces sample)
-- Tests: All 84 pass ✅
-- Data: 17,520 rows, real ENTSOE prices
-
----
-
-## Quick Checklist
-
-- [ ] Download GUI_2024.csv from ENTSOE
-- [ ] Download GUI_2023.csv from ENTSOE
-- [ ] Verify both files are in `C:\Users\zkong\Desktop\power\`
-- [ ] Run: `python process_real_data.py`
-- [ ] See: "✅ REAL DATA INSTALLED AND VERIFIED!"
-- [ ] Done! ✅
-
----
-
-**Time to real data:** ~20 minutes total
-**Complexity:** Very easy (downloads + 1 script run)
-**Result:** Production-ready ENTSOE dataset ✅
-
-Let me know when you've downloaded the files and I can verify they merged correctly!
+**Result:** Production-ready ENTSO-E dataset refreshed with one command. ✅

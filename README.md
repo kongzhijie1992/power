@@ -5,28 +5,50 @@ Overview
 --------
 A production-oriented prototype for European power-stack analysis with:
 
-**Forecasting**
-- Day-ahead price forecasts (up to 7 days, hourly resolution)
-- Weather-integrated LightGBM ensemble (GFS wind/solar features)
-- Probabilistic outputs (mean + 0.1/0.9 quantiles)
-- Walk-forward backtesting framework
+- Day-ahead price and demand forecasting (hourly, up to 7 days) using LightGBM ensembles with weather/load features
+- Walk-forward backtesting, leakage-safe evaluation, and probabilistic quantiles
+- Simplified dispatch and unit commitment (PuLP/CBC; upgradeable to commercial solvers)
+- ENTSO-E + Open-Meteo ingestion (chunked API, multi-area) with DST-safe UTC handling
 
-**Dispatch & Optimization**
-- Merit-order clearing (zonal dispatch)
-- Unit Commitment (UC) with MILP solver (PuLP/CBC)
-  - Startup/shutdown costs, min up/down, ramp constraints
-  - Extensible to commercial solvers (Gurobi, CPLEX)
+Current Data & Tests
+--------------------
+- Prices: 25,944 rows (UTC) in `data/DE_LU/day_ahead.csv` covering 2022-12-31 → 2025-12-16
+- Weather: 25,872 rows in `data/weather/DE_LU_weather.csv` (aligned)
+- Loads: 103,380 quarter-hour rows in `data/DE_LU/load_real.csv`
+- Multi-area: 30+ bidding zones populated (prices + weather; many with load)
+- Tests: 87/87 passing (`.venv\Scripts\pytest -q`)
+- Quick checks: `python check_data.py`, `python scripts/summarize_datasets.py`
 
-**Data**
-- ENTSO-E day-ahead prices (incremental ingestion, Parquet persistence)
-- GFS weather data (wind, solar radiation)
-- Forward-curve constructor
-- Configurable multi-zone ingestion
-
-**Backtesting & Validation**
-- Time-series cross-validation for model training
-- Walk-forward backtest harness
-- Performance metrics (RMSE, MAE)
+Power Stack Workflow
+--------------------
+1. **Data ingest**  
+   - Prices via ENTSO-E API (chunked) → `data/<AREA>/day_ahead_real.csv` (`scripts/fetch_entsoe_data.py`)  
+   - GUI fallback → `scripts/convert_entsoe.py` + `scripts/merge_years.py`  
+   - Persisted primary series → `data/<AREA>/day_ahead.csv`
+2. **Weather ingest**  
+   - Open-Meteo archive via fetch script (hourly wind/solar) → `data/weather/<AREA>_weather.csv`
+3. **Feature engineering**  
+   - Price lags/rolling/calendar: `src/models/forecast.py`, `src/models/price_model.py`  
+   - Weather features / proxies: `src/features/weather_features.py`  
+   - Demand features (calendar, weather, ramps, lags): `src/models/demand_forecast.py`
+4. **Modeling**  
+   - Price: LightGBM regression + quantiles (`src/models/price_model.py`, `src/models/forecast_cv.py`)  
+   - Demand: GradientBoosting/LightGBM per-hour models with quantiles (`src/models/demand_forecast.py`)  
+   - Fallback seasonal-naive when ML unavailable
+5. **Backtesting & evaluation**  
+   - Time-series CV + walk-forward (`src/models/backtest.py`, `src/models/forecast_cv.py`)  
+   - Leakage-safe walk-forward predictions (`test_walk_forward_predict_no_leakage`)
+6. **Forecast generation**  
+   - Hourly recursive forecasts with optional weather (`src/models/price_model.py`)  
+   - Probabilistic outputs (0.1/0.5/0.9)
+7. **Dispatch & UC**  
+   - Merit-order clearing (`src/dispatch/merit_order.py`)  
+   - Zonal dispatch from generation mix (`src/dispatch/zonal_dispatch.py`)  
+   - Unit commitment with startup/shutdown, ramps, min up/down (`src/dispatch/unit_commitment.py`)
+8. **Outputs & reporting**  
+   - Parquet/CSV helpers (`src/data/io.py`)  
+   - Forecast evaluation (`scripts/evaluate_price_forecast.py`)  
+   - Streamlit dashboard (`scripts/streamlit_dashboard.py`)
 
 Quickstart (poetry)
 -------------------
@@ -37,96 +59,73 @@ poetry install
 poetry add pulp lightgbm scikit-learn pyarrow
 ```
 
-2. Set up your ENTSO-E API key:
+2. Verify data and tests (uses existing DE_LU dataset):
 
 ```bash
-copy src\config.yaml.example src\config.yaml
-# Edit src\config.yaml and add your entsoe.api_key
+python check_data.py
+.venv\Scripts\pytest -q
 ```
 
-3. Run end-to-end demo with synthetic data (no API key required):
+3. Run an end-to-end demo:
 
 ```bash
-poetry run python scripts\run_forecast_with_gfs.py --area DE_LU
+python scripts\run_forecast_with_gfs.py --area DE_LU      # price forecast + backtest + weather features
+python scripts\run_full_pipeline.py --area DE_LU --synthetic  # synthetic end-to-end (no API needed)
+python scripts\run_uc_demo.py                             # unit commitment example
 ```
 
-4. Or use real ENTSO-E data (default area DE_LU):
+4. Refresh or extend real data (optional):
 
 ```bash
-poetry run python scripts\run_full_pipeline.py --area DE_LU
+python scripts\fetch_entsoe_data.py --areas DE_LU FR IT ES NL BE --start-date 2023-01-01 --end-date 2025-12-31 --chunk-days 60 --merge-existing
 ```
 
-5. Try the unit-commitment solver:
-
-```bash
-poetry run python scripts\run_uc_demo.py
-```
-
-See `notebooks/example_workflow.md` for a full walkthrough.
-
-Sample data and quick local setup
----------------------------------
-If you don't have an ENTSO‑E API key yet, use the included helper to generate synthetic prices
-and download Open‑Meteo weather (no API key required). This creates files the code expects
-under the `data/` folder.
-
-1. Generate sample data for the `DE` zone (90 days):
+Sample data (optional)
+----------------------
+Real data is already present; generate synthetic only if you want a minimal sandbox:
 
 ```powershell
-# Windows (cmd/powershell)
-C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\fetch_sample_data.py --area DE_LU --days 90
+python scripts\fetch_sample_data.py --area DE_LU --days 90
+python scripts\run_full_pipeline.py --area DE_LU --synthetic
 ```
-
-2. Files created:
-- `data/DE/day_ahead.csv` — hourly price series with a `value` column and ISO datetime index (UTC)
-- `data/weather/DE_weather.csv` — hourly `windspeed_10m` and `shortwave_radiation` from Open‑Meteo
-
-3. Run the full pipeline using the local files (no ENTSO‑E key required):
-
-```powershell
-C:\Users\zkong\Desktop\power\.venv\Scripts\python.exe scripts\run_full_pipeline.py --area DE_LU
-```
-
-If you prefer to provide your own price CSV, ensure it is saved to `data/<AREA>/day_ahead.csv` with
-an ISO datetime index and a column named `value`.
-
-Want to use a different weather provider or file? See `scripts/fetch_sample_data.py` for how the
-Open‑Meteo CSV is formatted; the pipeline will use local weather CSVs where available.
 
 What you get
 ------------
 
-### Forecasting
-- `src/models/forecast_cv.py` — LightGBM ensemble with weather features
-- `src/features/weather_features.py` — GFS wind/solar feature extraction (fallback proxies if GRIB parsing unavailable)
-- Time-series CV and walk-forward backtesting
+### Forecasting & Demand
+- `src/models/forecast_cv.py` — LightGBM ensemble with weather features + CV
+- `src/models/price_model.py` — Recursive price forecaster with calendar/weather/holiday features
+- `src/models/demand_forecast.py` — Demand + quantile models with load/weather features
+- `src/models/forecast.py` — Baseline features + seasonal-naive fallback
+- `src/models/backtest.py` — Walk-forward backtests + leakage-safe predict
+
+### Features & Weather
+- `src/features/weather_features.py` — GFS/Open-Meteo feature extraction and proxies
+- `src/weather/gfs.py` — GFS GRIB download/parsing helpers
 
 ### Ingestion
-- `src/ingest/entsoe_client.py` — ENTSO-E API client (entsoe-py wrapper)
-- `src/ingest/incremental_ingest.py` — Detect last persisted timestamp, fetch only new data, append to Parquet
-- `src/ingest/parallel_ingest.py` — Multi-threaded parallel fetching across bidding zones
-- `src/weather/gfs.py` — GFS GRIB2 download and nearest-gridpoint extraction (requires optional cfgrib)
+- `src/ingest/entsoe_client.py` — ENTSO-E client wrapper (UTC normalization)
+- `src/ingest/incremental_ingest.py` — Append-only updates with overlap for corrections
+- `src/ingest/parallel_ingest.py` — Threaded multi-area fetch
+- `src/ingest/ingest_all.py` — Orchestration + synthetic generator
 
 ### Dispatch & Optimization
 - `src/dispatch/merit_order.py` — Simple merit-order clearing
-- `src/dispatch/unit_commitment.py` — MILP unit-commitment with:
-  - Binary on/off, startup/shutdown variables
-  - Min-up/min-down constraints
-  - Ramp-up/ramp-down limits
-  - Startup costs
-  - Extensible to Gurobi/CPLEX
-- `src/dispatch/zonal_dispatch.py` — Zone-level dispatch using generation-mix data
+- `src/dispatch/unit_commitment.py` — MILP UC (startup/shutdown, ramps, min up/down)
+- `src/dispatch/zonal_dispatch.py` — Generation-mix-based zonal clearing
 
 ### Backtesting & Analytics
-- `src/models/backtest.py` — Walk-forward backtest harness with RMSE/MAE
-- `src/data/io.py` — Parquet/CSV persistence helpers
+- `src/models/backtest.py` — RMSE helpers, walk-forward splits
+- `scripts/evaluate_price_forecast.py` — Evaluate forecast CSVs vs truth
+- `src/data/io.py` — CSV/Parquet helpers, flexible column parsing
 
-### Runners & Scheduling
-- `scripts/run_forecast_with_gfs.py` — End-to-end: train + backtest + forecast with weather features
-- `scripts/run_uc_demo.py` — Unit-commitment solver example
-- `scripts/run_full_pipeline.py` — Full pipeline (ingestion + forecast + dispatch)
-- `scripts/run_incremental_all.py` — Incremental update runner
-- `scripts/schedule_incremental.bat` — Windows Task Scheduler integration (run nightly updates)
+### Runners & Dashboard
+- `scripts/run_forecast_with_gfs.py` — Train + backtest + forecast with weather
+- `scripts/run_demand_forecast.py` — Demand model training/forecast
+- `scripts/run_full_pipeline.py` — Ingest → forecast → dispatch demo
+- `scripts/run_incremental_all.py` — Bulk incremental updates
+- `scripts/streamlit_dashboard.py` — Quick visualization
+- `scripts/run_uc_demo.py` — UC example
 
 Configuration
 --------------
@@ -134,19 +133,15 @@ Configuration
 Create `src/config.yaml` from the example:
 
 ```yaml
-# ENTSO-E API token
 entsoe:
   api_key: "YOUR_TOKEN_HERE"
-  default_area: DE
-  # Optional list of areas for bulk ingestion
-  areas: ["DE", "FR", "GB", "IT", "ES"]
+  default_area: DE_LU
+  areas: ["DE_LU", "FR", "GB", "IT", "ES"]
 
-# Data parameters
 data:
   history_days: 90
   forecast_horizon_days: 7
 
-# Optional: weather feature extraction lat/lon (defaults to Berlin)
 weather:
   latitude: 52.5
   longitude: 13.4
@@ -158,41 +153,31 @@ Dependencies
 **Required:**
 - `pandas`, `numpy`, `requests`, `yaml`
 - `entsoe-py` — ENTSO-E API client
-- `pulp` — MILP solver wrapper (uses CBC by default; Gurobi/CPLEX optional)
+- `pulp` — MILP solver wrapper (CBC by default; Gurobi/CPLEX optional)
 - `lightgbm`, `scikit-learn` — forecasting models
 - `pyarrow` — Parquet support
 
-**Optional (for weather feature parsing):**
-- `xarray` + `cfgrib` + system `ecCodes` library — GFS GRIB2 parsing
-  - Without these, weather features fall back to synthetic proxies (model still works)
-
-Install all via:
-
-```bash
-poetry install
-poetry add pulp lightgbm scikit-learn pyarrow xarray cfgrib
-```
+**Optional (for GRIB parsing):**
+- `xarray` + `cfgrib` + system `ecCodes` — GFS parsing (falls back to proxies otherwise)
 
 Architecture & Solver Options
 ------------------------------
 
 **Data Flow:**
-1. ENTSO-E or synthetic prices → incremental ingest (Parquet)
-2. GFS weather (optional) → feature extraction
-3. Price + weather features → LightGBM CV training
-4. Trained model + backtest → forecast + error metrics
-5. Forecast + generation mix → dispatch optimization
-6. UC solver → minimum-cost commitment schedule
+1. ENTSO-E/API or GUI prices → ingest (`scripts/fetch_entsoe_data.py` / `scripts/merge_years.py`)
+2. Weather (Open-Meteo/GFS) → `data/weather/<AREA>_weather.csv`
+3. Feature build (lags, calendar, weather, load) → `src/models/price_model.py`, `src/models/demand_forecast.py`
+4. CV + backtests → `src/models/forecast_cv.py`, `src/models/backtest.py`
+5. Forecasts (mean + quantiles) → CSV/Parquet via `src/data/io.py`
+6. Dispatch/UC → `src/dispatch/merit_order.py`, `src/dispatch/unit_commitment.py`, `src/dispatch/zonal_dispatch.py`
 
 **Solver Options:**
-- Default: PuLP + CBC (free, open-source)
-- Upgrade: Gurobi or CPLEX (commercial; PuLP auto-detects)
+- Default: PuLP + CBC (open-source)
+- Upgrade: Gurobi/CPLEX (auto-detected by PuLP if installed)
 
 Next Steps
 ----------
-- Obtain ENTSO-E API key and test with real data
-- Add generation mix / outage data connectors
-- Tune LightGBM hyperparameters and add ensemble across multiple areas
-- Upgrade UC solver with transmission constraints and reserve markets
-- Deploy via Docker and set up scheduled ingestion
-# Power Stack model 
+- Keep data fresh: `python scripts/fetch_entsoe_data.py --merge-existing ...`
+- Run dashboards/backtests on the live 3-year dataset
+- Convert large CSVs to Parquet for faster training/evaluation
+- Explore multi-area training or residual-demand modeling with weather/load

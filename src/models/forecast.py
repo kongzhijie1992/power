@@ -39,10 +39,17 @@ def seasonal_naive_forecast(series: pd.Series, days: int = 7) -> pd.Series:
     df = hist.to_frame('y')
     df['hour'] = df.index.hour
     df['dayofweek'] = df.index.dayofweek
-    pivot = df.groupby(['dayofweek', 'hour'])['y'].mean()
+    pivot = df.groupby(['dayofweek', 'hour'])['y'].mean().sort_index()
+    hour_means = df.groupby('hour')['y'].mean()
+    global_mean = df['y'].mean()
     preds = []
     for ts in idx:
-        preds.append(pivot.loc[(ts.dayofweek, ts.hour)])
+        val = pivot.get((ts.dayofweek, ts.hour))
+        if pd.isna(val):
+            val = hour_means.get(ts.hour, global_mean)
+        if pd.isna(val):
+            val = global_mean
+        preds.append(val)
     s = pd.Series(preds, index=idx)
     s.index = s.index.tz_convert(None)
     return s
