@@ -14,6 +14,7 @@ import logging
 import os
 
 import pandas as pd
+import numpy as np
 
 from src.ingest.ingest_all import synthetic_area_series, fetch_and_persist_all
 from src.models.forecast_cv import cv_train_lgbm, predict_with_model
@@ -34,7 +35,8 @@ def main(area: str, synthetic: bool = True):
         cfg_path = Path(__file__).parents[1] / 'src' / 'config.yaml'
         if not cfg_path.exists():
             cfg_path = Path(__file__).parents[1] / 'src' / 'config.yaml.example'
-        cfg = yaml.safe_load(open(cfg_path))
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
         api_key = (cfg.get('entsoe') or {}).get('api_key')
         if not api_key:
             raise ValueError('No ENTSO-E key available in config — run with --synthetic')
@@ -54,15 +56,15 @@ def main(area: str, synthetic: bool = True):
     print('CV stats:', stats)
 
     # Predict 7 days
-    forecast = predict_with_model(model, None, prices, days=7)
+    forecast = predict_with_model(model, prices, days=7)
     print('Forecast head:')
     print(forecast.head())
 
     # Create a synthetic generation mix for dispatch demo
     # columns: wind, solar, coal, gas, nuclear
     gen_mix = pd.DataFrame(index=prices.index)
-    gen_mix['wind'] = 3000 * (0.5 + 0.5 * pd.np.sin(2 * pd.np.pi * prices.index.hour / 24))
-    gen_mix['solar'] = 2000 * (pd.np.clip(pd.np.cos(2 * pd.np.pi * (prices.index.hour-6) / 24), 0, 1))
+    gen_mix['wind'] = 3000 * (0.5 + 0.5 * np.sin(2 * np.pi * prices.index.hour / 24))
+    gen_mix['solar'] = 2000 * (np.clip(np.cos(2 * np.pi * (prices.index.hour-6) / 24), 0, 1))
     gen_mix['coal'] = 5000
     gen_mix['gas'] = 4000
     gen_mix['nuclear'] = 2000

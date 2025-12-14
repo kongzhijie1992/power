@@ -30,11 +30,10 @@ All timestamps are internally stored and processed in **UTC (Coordinated Univers
 
 ### Data Ingest Pipeline
 
-**File:** [src/ingest/entsoe_client.py](src/ingest/entsoe_client.py#L48-L50)
+**File:** `src/ingest/entsoe_client.py`
 
 ```python
-# entsoe-py returns timezone-aware series (Europe/Berlin timezone)
-# Convert to UTC and store as naive datetime (no timezone info)
+# entsoe-py returns timezone-aware series (Europe timezone); convert to UTC naive
 series = series.tz_convert('UTC').tz_localize(None)
 ```
 
@@ -75,7 +74,7 @@ dfw.index = dfw.index.tz_convert('UTC').tz_localize(None)
 
 ### Forecasting & Backtesting
 
-**File:** [src/models/forecast.py](src/models/forecast.py#L38)
+**File:** `src/models/forecast.py`
 
 ```python
 # Ensure historical data has UTC timezone
@@ -112,14 +111,11 @@ Tests verify:
 ### Running DST Tests
 
 ```bash
-# Run only DST tests
-pytest tests/test_dst_handling.py -v
-
-# Run all tests (including DST)
-pytest -q
+.venv\Scripts\pytest tests/test_dst_handling.py -v
+.venv\Scripts\pytest -q   # full suite (87 tests)
 ```
 
-**Current Status:** ✅ All 3 DST tests passing (84/84 total tests)
+**Current Status:** ✅ All DST tests passing (87/87 total tests)
 
 ## Real-World Example
 

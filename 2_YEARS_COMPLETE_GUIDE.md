@@ -2,7 +2,9 @@
 
 ## TL;DR
 
-**Yes, we can do 2 years!** Here's the quickest path:
+The repo already contains **~3 years of real ENTSO-E prices (25,944 rows, 2022-12-31 → 2025-12-16) plus matching weather/load** fetched via the API. Use the steps below only if you need to rebuild from GUI downloads or trim to a clean 2023–2024 slice.
+
+**If you rebuild to 2023–2024 only, expect ~17,520 rows.** Here's the quickest path:
 
 ### Quick Start (20 minutes)
 
@@ -26,13 +28,15 @@ python check_data.py
 pytest -q
 ```
 
-**Result:** ~17,520 hourly rows, 730 days, production-ready ✅
+**Result (current repo):** ~25,944 hourly rows, 2022-12-31 → 2025-12-16  
+**Result (if you rebuild 2023–2024):** ~17,520 hourly rows, 730 days, production-ready ✅
 
 ## What You Get
 
 | Metric | Value |
 |--------|:---:|
-| **Total Rows** | 17,520 |
+| **Total Rows (current)** | 25,944 |
+| **Total Rows (2023–2024 rebuild)** | 17,520 |
 | **Date Range** | 2023-01-01 to 2024-12-31 |
 | **Days Covered** | 730 |
 | **Completeness** | 100% |
@@ -42,7 +46,7 @@ pytest -q
 
 ## Why 2 Years?
 
-### 1 Year (Current: ~346 days)
+### 1 Year (for comparison)
 - ✅ Good for testing
 - ✅ Good for backtesting
 - ⚠️ Limited seasonal patterns
@@ -131,7 +135,7 @@ Missing values: 0
 pytest -q
 ```
 
-**Expected:** `84 passed in 8.82s`
+**Expected:** `87 passed` (pytest)
 
 ## Optional: Add 2025 Data
 
@@ -273,7 +277,7 @@ After following all steps:
 - [ ] Downloaded 2023 data from ENTSO-E GUI
 - [ ] Ran merge script successfully
 - [ ] `python check_data.py` shows 17,520 rows
-- [ ] `pytest -q` shows all 84 tests passing
+- [ ] `pytest -q` shows all 87 tests passing
 - [ ] No missing values in data
 - [ ] Timezone is UTC
 - [ ] Date range is 2023-01-01 to 2024-12-31

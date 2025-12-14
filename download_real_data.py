@@ -72,7 +72,7 @@ def run_tests():
         return False
     
     print("\n✅ REAL DATA INSTALLED AND VERIFIED!")
-    print("   All 84 tests passing with production ENTSOE data")
+    print("   All 87 tests passing with production ENTSOE data")
     return True
 
 def main():

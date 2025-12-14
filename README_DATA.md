@@ -1,145 +1,96 @@
 # Data Download Status & Recommendations
 
-## Quick Answer: ✅ YES, You Have Enough Data to Start
+## Quick Answer: ✅ Ready with ~3 Years of Real Data
 
-**Current Inventory:**
-- **346 days** of hourly electricity prices (8,304 rows)
-- **90 days** of hourly weather data (2,160 rows)
-- **Coverage:** Dec 2024 → Dec 2025 (real ENTSO-E data)
-- **Quality:** Zero missing values, DST-safe, fully tested
+**Current Inventory (DE_LU primary):**
+- Prices: 25,944 hourly rows (`data/DE_LU/day_ahead.csv`, 2022-12-31 → 2025-12-16)
+- Weather: 25,872 hourly rows (`data/weather/DE_LU_weather.csv`, aligned to 2025-12-12)
+- Loads: 103,380 quarter-hour rows (`data/DE_LU/load_real.csv`)
+- Multi-area: 30+ bidding zones with price + weather; many with load forecasts too
+- Tests: 87/87 passing on this dataset
 
 ## What You Can Do Right Now
 
-### ✅ Test & Validate
+- ✅ Test & validate: `.venv\Scripts\pytest -q`
+- ✅ Backtest models: `python -m src.models.backtest`
+- ✅ Train price + demand models with weather/load: use `scripts/run_demand_forecast.py` or `scripts/run_forecast_with_gfs.py`
+- ✅ Run UC/dispatch demos: `python scripts/run_uc_demo.py`, `python scripts/run_full_pipeline.py`
+
+## Do We Need More Data?
+
+| Use Case | Have | Need | Status |
+|----------|:---:|:---:|:---:|
+| Unit Tests | 1,080 days | 1 day | ✅ |
+| Backtesting | 1,080 days | 30–90 days | ✅ |
+| Model Dev | 1,080 days | 90+ days | ✅ |
+| Production | 1–2 years | 1,080 days | ✅ |
+| Seasonal | 2+ years | 1,080 days | ✅ |
+
+No additional historical download is required. Focus on keeping data fresh.
+
+## How to Refresh / Extend
+
+### API (Preferred, Automated)
 ```bash
-pytest -q              # All 84 tests pass
+python scripts/fetch_entsoe_data.py ^
+  --areas DE_LU FR IT ES NL BE ^
+  --start-date 2023-01-01 --end-date 2025-12-31 ^
+  --chunk-days 60 --merge-existing
 ```
+Writes `day_ahead_real.csv` + `weather/<AREA>_weather.csv` and merges safely.
 
-### ✅ Backtest Models
+### GUI (Fallback)
 ```bash
-python -m src.backtest.run_backtest  # Works with current data
+python scripts/convert_entsoe.py --input GUI_2024.csv --output data/DE_LU/day_ahead.csv --sequence 1 --resample H --tz UTC
+python scripts/merge_years.py --input1 GUI_2024.csv --input2 GUI_2023.csv --output data/DE_LU/day_ahead.csv --sequence 1
 ```
 
-### ✅ Develop & Experiment
-```bash
-# Forecast, feature engineering, optimization all work
-```
+## Data Sources
 
-### ✅ Process Real ENTSO-E Data
-```bash
-python scripts/convert_entsoe.py --input "your_download.csv" \
-  --output data/DE/day_ahead.csv --sequence 1 --resample H --tz UTC
-```
+| Source | Data | Status | Access |
+|--------|:---:|:---:|---|
+| ENTSO-E API | Day-ahead prices | ✅ Working via chunked fetch | `scripts/fetch_entsoe_data.py` |
+| Open-Meteo | Weather | ✅ Working | Auto-called by fetch script |
+| CSV Import | Custom data | ✅ | `scripts/convert_entsoe.py`, `scripts/merge_years.py` |
 
-## What Requires More Data
-
-| Use Case | Current | Needed | Action |
-|----------|:---:|:---:|---|
-| Unit Tests | 346 days | 1+ day | ✅ Pass |
-| Backtesting | 346 days | 30+ days | ✅ Pass |
-| Model Development | 346 days | 90+ days | ✅ Pass |
-| **Production** | 346 days | **1-2 years** | ⚠️ Consider expanding |
-| **Seasonal Analysis** | 346 days | **2+ years** | ❌ Needs more data |
-
-## How to Get More Data (If Needed)
-
-### Fastest: ENTSO-E GUI (15 minutes)
-```
-1. Go to https://www.entsoe.eu/data/energy-prices-data/
-2. Filter: Area=Germany, Year=2024 (full year)
-3. Click "Download as CSV"
-4. Run converter:
-   python scripts/convert_entsoe.py \
-     --input "GUI_ENERGY_PRICES_20240101000-20241231000.csv" \
-     --output data/DE/day_ahead.csv \
-     --sequence 1 --resample H --tz UTC
-```
-
-**Result:** ~8,760 additional rows (full 2024), total ~17,000 rows = production-ready
-
-### Automated: ENTSO-E API (Requires Token Activation)
-```bash
-# Once token activated (contact ENTSO-E support):
-python scripts/fetch_entsoe_data.py
-```
-
-**Current Token Status:**
-- ✅ Token stored securely in `.env`
-- ⚠️ API returns 400 errors (not yet activated)
-- **Next Step:** Email support@entsoe.eu to activate
-
-## Data Sources Currently Integrated
-
-| Source | Data Type | Coverage | Status | Access |
-|--------|:---:|:---:|:---:|---|
-| ENTSO-E | Day-ahead prices | EUR/MWh | ✅ Working | GUI or API |
-| Open-Meteo | Weather | Wind, temp, radiation | ✅ Working | Free, no auth |
-| CSV Import | Custom data | Any format | ✅ Working | `convert_entsoe.py` |
-
-## Storage & Organization
+## Storage & Organization (key files)
 
 ```
 data/
-├── DE/
-│   ├── day_ahead.csv              (8,304 rows, main file)
-│   ├── day_ahead.parquet          (recent snapshot)
-│   ├── day_ahead_seq1.csv         (Sequence 1 for comparison)
-│   └── seq_compare.png            (visualization)
-├── DE_LU/
-│   └── (other areas...)
-└── weather/
-    └── DE_weather.csv             (2,160 rows)
+├── DE_LU/day_ahead.csv         # main price series (25,944 rows)
+├── DE_LU/day_ahead_real.csv    # raw API pull (25,872 rows)
+├── DE_LU/load_real.csv         # quarter-hour load
+└── weather/DE_LU_weather.csv   # hourly weather
 ```
+Use `scripts/summarize_datasets.py` to see coverage for all areas.
 
-## Next Steps (Recommended)
+## Recommended Actions
 
-### Today
-✅ All done! Current data is ready to use.
-
-### This Week (Optional)
-⚠️ If you need production-level seasonal analysis:
-1. Download 2024 full year from ENTSO-E GUI
-2. Run converter to append to `data/DE/day_ahead.csv`
-3. Re-run backtests for 2024-2025 comparison
-
-### Later (When API is Ready)
-✅ Once ENTSO-E activates token:
-1. Verify with: `python scripts/diagnose_entsoe.py`
-2. Enable automated fetch: `python scripts/fetch_entsoe_data.py`
-3. Schedule in GitHub Actions for daily updates
+- Today: Run `.venv\Scripts\pytest -q` and `python check_data.py` (should stay green).
+- Weekly: Refresh via API with `--merge-existing` to append the newest week.
+- Monthly: Convert to Parquet for speed (`scripts/convert_prices_to_parquet.py`).
+- Ongoing: Keep `.env` token valid; monitor ENTSO-E rate limits with `scripts/diagnose_entsoe.py`.
 
 ## Data Quality Verification
 
-Run anytime:
 ```bash
-python check_data.py
+python check_data.py                 # row counts, date ranges, NaN check
+python scripts/summarize_datasets.py # multi-area inventory
+.venv\Scripts\pytest -q              # 87/87 tests
 ```
-
-Outputs:
-- Current date range
-- Row count & coverage
-- Missing values check
-- Recommendations
 
 ## File Reference
 
 | File | Purpose |
 |------|---------|
-| [DATA_STRATEGY.md](DATA_STRATEGY.md) | Detailed data requirements by use case |
-| [DST_HANDLING.md](DST_HANDLING.md) | How DST transitions are handled |
-| [scripts/convert_entsoe.py](scripts/convert_entsoe.py) | Convert GUI CSV to hourly format |
-| [scripts/fetch_entsoe_data.py](scripts/fetch_entsoe_data.py) | Fetch data from ENTSO-E API |
-| [scripts/test_pipeline.py](scripts/test_pipeline.py) | Test full data pipeline |
-| [check_data.py](check_data.py) | Quick data inventory check |
+| DATA_STRATEGY.md | Requirements and plan |
+| DST_HANDLING.md | DST details and tests |
+| scripts/fetch_entsoe_data.py | Chunked API + weather |
+| scripts/convert_entsoe.py | GUI CSV converter |
+| scripts/merge_years.py | Merge multi-year CSVs |
+| scripts/summarize_datasets.py | Multi-area coverage report |
+| check_data.py | Quick inventory |
 
 ## Summary
 
-You have **~95% of 1-year minimum data** ✅ This is:
-- ✅ Enough to backtest models
-- ✅ Enough to develop & experiment
-- ✅ Enough for unit testing
-- ⚠️ Borderline for robust production (consider 1 more year)
-- ❌ Not enough for multi-year seasonal analysis
-
-**Action:** You can start using the power project right now. Data is production-quality and fully tested.
-
+You already have a production-quality, DST-safe, 3-year dataset with price, weather, and load across 30+ zones. Keep it fresh with the API fetch script; no further historical downloads are needed unless you want a longer archive.
