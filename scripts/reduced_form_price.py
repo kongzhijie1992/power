@@ -103,6 +103,22 @@ def _to_hourly(series: pd.Series) -> pd.Series:
     return series.resample("h").mean()
 
 
+def load_commodities(path: Optional[Path]) -> Optional[pd.DataFrame]:
+    """Load commodity price time series (e.g., gas, coal, co2) from CSV/Parquet."""
+    if path is None or not path.exists():
+        return None
+    if path.suffix == ".parquet":
+        df = pd.read_parquet(path)
+    else:
+        df = pd.read_csv(path)
+    if "datetime" in df.columns:
+        df["datetime"] = pd.to_datetime(df["datetime"])
+        df = df.set_index("datetime")
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index().resample("h").ffill()
+    return df[["gas", "coal", "co2"]].rename(columns=str.lower)
+
+
 @dataclass
 class StackParams:
     intercept: float
@@ -145,7 +161,15 @@ def compute_ratio(residual: pd.Series, demand_fc: pd.Series, window_days: int = 
     return float(ratio.median())
 
 
-def build_features(net_load: pd.Series, stack_price: pd.Series) -> pd.DataFrame:
+def build_features(
+    net_load: pd.Series,
+    stack_price: pd.Series,
+    commodities: Optional[pd.DataFrame] = None,
+    eta_gas: float = 0.55,
+    eta_coal: float = 0.38,
+    ef_gas: float = 0.36,
+    ef_coal: float = 0.90,
+) -> pd.DataFrame:
     df = pd.DataFrame(
         {
             "net_load": net_load,
@@ -158,14 +182,40 @@ def build_features(net_load: pd.Series, stack_price: pd.Series) -> pd.DataFrame:
             "month": net_load.index.month,
         }
     )
+    if commodities is not None:
+        c = commodities.reindex(net_load.index).ffill()
+        gas = c["gas"] if "gas" in c else 0
+        coal = c["coal"] if "coal" in c else 0
+        co2 = c["co2"] if "co2" in c else 0
+        df["mc_gas"] = gas / max(eta_gas, 1e-3) + co2 * ef_gas
+        df["mc_coal"] = coal / max(eta_coal, 1e-3) + co2 * ef_coal
+        df["css"] = df["stack_price"] - df["mc_gas"]
+        df["cds"] = df["stack_price"] - df["mc_coal"]
     return df.bfill().fillna(0)
 
 
-def fit_residual_model(price: pd.Series, stack_price: pd.Series, net_load: pd.Series) -> Tuple[Optional[object], float]:
+def fit_residual_model(
+    price: pd.Series,
+    stack_price: pd.Series,
+    net_load: pd.Series,
+    commodities: Optional[pd.DataFrame] = None,
+    eta_gas: float = 0.55,
+    eta_coal: float = 0.38,
+    ef_gas: float = 0.36,
+    ef_coal: float = 0.90,
+) -> Tuple[Optional[object], float]:
     base = pd.concat([price, stack_price, net_load], axis=1, join="inner").dropna()
     base.columns = ["price", "stack", "net_load"]
     residual = base["price"] - base["stack"]
-    feat = build_features(base["net_load"], base["stack"])
+    feat = build_features(
+        base["net_load"],
+        base["stack"],
+        commodities=commodities.reindex(base.index).ffill() if commodities is not None else None,
+        eta_gas=eta_gas,
+        eta_coal=eta_coal,
+        ef_gas=ef_gas,
+        ef_coal=ef_coal,
+    )
     if LGBMRegressor is None or len(feat) < 200:
         return None, float(residual.std())
     model = LGBMRegressor(
@@ -181,7 +231,15 @@ def fit_residual_model(price: pd.Series, stack_price: pd.Series, net_load: pd.Se
     return model, float(residual.std())
 
 
-def forecast_area(area: str, horizon_days: int = 7) -> Optional[pd.DataFrame]:
+def forecast_area(
+    area: str,
+    horizon_days: int = 7,
+    commodities: Optional[pd.DataFrame] = None,
+    eta_gas: float = 0.55,
+    eta_coal: float = 0.38,
+    ef_gas: float = 0.36,
+    ef_coal: float = 0.90,
+) -> Optional[pd.DataFrame]:
     try:
         price = _to_hourly(_load_price(area))
         residual = _to_hourly(_load_residual_demand(area))
@@ -199,7 +257,16 @@ def forecast_area(area: str, horizon_days: int = 7) -> Optional[pd.DataFrame]:
         return None
 
     stack_train = build_stack_price(net_load_hist, stack_params)
-    model, resid_std = fit_residual_model(price, stack_train, net_load_hist)
+    model, resid_std = fit_residual_model(
+        price,
+        stack_train,
+        net_load_hist,
+        commodities=commodities,
+        eta_gas=eta_gas,
+        eta_coal=eta_coal,
+        ef_gas=ef_gas,
+        ef_coal=ef_coal,
+    )
 
     last_price_ts = price.index.max()
     horizon = last_price_ts + pd.Timedelta(days=horizon_days)
@@ -209,7 +276,15 @@ def forecast_area(area: str, horizon_days: int = 7) -> Optional[pd.DataFrame]:
     fc_net_load = fc_net_load[fc_net_load.index <= horizon] * ratio
 
     stack_forecast = build_stack_price(fc_net_load, stack_params)
-    feat_fc = build_features(fc_net_load, stack_forecast)
+    feat_fc = build_features(
+        fc_net_load,
+        stack_forecast,
+        commodities=commodities,
+        eta_gas=eta_gas,
+        eta_coal=eta_coal,
+        ef_gas=ef_gas,
+        ef_coal=ef_coal,
+    )
 
     if model:
         residual_pred = pd.Series(model.predict(feat_fc), index=feat_fc.index)
@@ -249,6 +324,11 @@ def backtest_area(
     train_window_days: int = 120,
     horizon_days: int = 7,
     eval_days: int = 30,
+    commodities: Optional[pd.DataFrame] = None,
+    eta_gas: float = 0.55,
+    eta_coal: float = 0.38,
+    ef_gas: float = 0.36,
+    ef_coal: float = 0.90,
 ) -> Optional[Tuple[int, float, float, float]]:
     """Walk-forward backtest using rolling stack + residual model."""
     try:
@@ -273,13 +353,30 @@ def backtest_area(
         except Exception:
             continue
         stack_train = build_stack_price(train_net, params)
-        model, _ = fit_residual_model(train_price, stack_train, train_net)
+        model, _ = fit_residual_model(
+            train_price,
+            stack_train,
+            train_net,
+            commodities=commodities,
+            eta_gas=eta_gas,
+            eta_coal=eta_coal,
+            ef_gas=ef_gas,
+            ef_coal=ef_coal,
+        )
 
         target_net = net[(net.index > ref) & (net.index <= ref + pd.Timedelta(days=horizon_days))]
         if target_net.empty:
             continue
         stack_fc = build_stack_price(target_net, params)
-        feat_fc = build_features(target_net, stack_fc)
+        feat_fc = build_features(
+            target_net,
+            stack_fc,
+            commodities=commodities,
+            eta_gas=eta_gas,
+            eta_coal=eta_coal,
+            ef_gas=ef_gas,
+            ef_coal=ef_coal,
+        )
         if model:
             residual_pred = pd.Series(model.predict(feat_fc), index=feat_fc.index)
         else:
@@ -300,9 +397,25 @@ def backtest_area(
     return len(errs), rmse, mae, bias
 
 
-def main(areas: Iterable[str], horizon_days: int = 7):
+def main(
+    areas: Iterable[str],
+    horizon_days: int = 7,
+    commodities: Optional[pd.DataFrame] = None,
+    eta_gas: float = 0.55,
+    eta_coal: float = 0.38,
+    ef_gas: float = 0.36,
+    ef_coal: float = 0.90,
+):
     for area in areas:
-        forecast_area(area, horizon_days=horizon_days)
+        forecast_area(
+            area,
+            horizon_days=horizon_days,
+            commodities=commodities,
+            eta_gas=eta_gas,
+            eta_coal=eta_coal,
+            ef_gas=ef_gas,
+            ef_coal=ef_coal,
+        )
 
 
 if __name__ == "__main__":
@@ -311,8 +424,15 @@ if __name__ == "__main__":
     ap.add_argument("--horizon", type=int, default=7, help="Forecast horizon in days")
     ap.add_argument("--train-window", type=int, default=120, help="Training window in days for backtest")
     ap.add_argument("--eval-days", type=int, default=30, help="How many trailing days to evaluate in backtest")
+    ap.add_argument("--commodities-file", type=Path, help="CSV/Parquet with datetime, gas, coal, co2 columns")
+    ap.add_argument("--eta-gas", type=float, default=0.55, help="Gas fleet efficiency (electric)")
+    ap.add_argument("--eta-coal", type=float, default=0.38, help="Coal fleet efficiency (electric)")
+    ap.add_argument("--ef-gas", type=float, default=0.36, help="Gas CO2 intensity t/MWh_e")
+    ap.add_argument("--ef-coal", type=float, default=0.90, help="Coal CO2 intensity t/MWh_e")
     ap.add_argument("--backtest-only", action="store_true", help="Run walk-forward backtest instead of writing forecasts")
     args = ap.parse_args()
+
+    commodities = load_commodities(args.commodities_file)
 
     if args.areas:
         areas = args.areas
@@ -336,7 +456,17 @@ if __name__ == "__main__":
     if args.backtest_only:
         rows = []
         for area in areas:
-            res = backtest_area(area, train_window_days=args.train_window, horizon_days=args.horizon, eval_days=args.eval_days)
+            res = backtest_area(
+                area,
+                train_window_days=args.train_window,
+                horizon_days=args.horizon,
+                eval_days=args.eval_days,
+                commodities=commodities,
+                eta_gas=args.eta_gas,
+                eta_coal=args.eta_coal,
+                ef_gas=args.ef_gas,
+                ef_coal=args.ef_coal,
+            )
             if res is None:
                 continue
             n, rmse, mae, bias = res
@@ -345,4 +475,12 @@ if __name__ == "__main__":
         for area, n, rmse, mae, bias in sorted(rows):
             print(f"{area:5s} {n:7d} {rmse:8.2f} {mae:8.2f} {bias:8.2f}")
     else:
-        main(areas, horizon_days=args.horizon)
+        main(
+            areas,
+            horizon_days=args.horizon,
+            commodities=commodities,
+            eta_gas=args.eta_gas,
+            eta_coal=args.eta_coal,
+            ef_gas=args.ef_gas,
+            ef_coal=args.ef_coal,
+        )
