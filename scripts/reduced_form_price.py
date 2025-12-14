@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple, Iterable
+from typing import Optional, Tuple, Iterable, List
 
 import numpy as np
 import pandas as pd
@@ -174,6 +175,7 @@ def fit_residual_model(price: pd.Series, stack_price: pd.Series, net_load: pd.Se
         subsample=0.9,
         colsample_bytree=0.9,
         random_state=42,
+        verbose=-1,
     )
     model.fit(feat, residual)
     return model, float(residual.std())
@@ -242,6 +244,62 @@ def forecast_area(area: str, horizon_days: int = 7) -> Optional[pd.DataFrame]:
     return out
 
 
+def backtest_area(
+    area: str,
+    train_window_days: int = 120,
+    horizon_days: int = 7,
+    eval_days: int = 30,
+) -> Optional[Tuple[int, float, float, float]]:
+    """Walk-forward backtest using rolling stack + residual model."""
+    try:
+        price = _to_hourly(_load_price(area))
+        net = _to_hourly(_load_residual_demand(area))
+    except FileNotFoundError:
+        return None
+
+    end = min(price.index.max(), net.index.max())
+    start = end - pd.Timedelta(days=eval_days)
+    refs = pd.date_range(start=start, end=end - pd.Timedelta(days=1), freq="D")
+
+    errs: List[float] = []
+    for ref in refs:
+        train_start = ref - pd.Timedelta(days=train_window_days)
+        train_price = price[(price.index > train_start) & (price.index <= ref)]
+        train_net = net[(net.index > train_start) & (net.index <= ref)]
+        if len(train_price) < 48 or len(train_net) < 48:
+            continue
+        try:
+            params = calibrate_stack(train_price, train_net)
+        except Exception:
+            continue
+        stack_train = build_stack_price(train_net, params)
+        model, _ = fit_residual_model(train_price, stack_train, train_net)
+
+        target_net = net[(net.index > ref) & (net.index <= ref + pd.Timedelta(days=horizon_days))]
+        if target_net.empty:
+            continue
+        stack_fc = build_stack_price(target_net, params)
+        feat_fc = build_features(target_net, stack_fc)
+        if model:
+            residual_pred = pd.Series(model.predict(feat_fc), index=feat_fc.index)
+        else:
+            residual_pred = pd.Series(0.0, index=feat_fc.index)
+        preds = (stack_fc + residual_pred).rename("pred")
+        truth = price.reindex(preds.index).rename("actual")
+        aligned = pd.concat([truth, preds], axis=1).dropna()
+        if aligned.empty:
+            continue
+        errs.extend((aligned["pred"] - aligned["actual"]).tolist())
+
+    if not errs:
+        return None
+    err_series = pd.Series(errs)
+    rmse = math.sqrt((err_series.pow(2).mean()))
+    mae = err_series.abs().mean()
+    bias = err_series.mean()
+    return len(errs), rmse, mae, bias
+
+
 def main(areas: Iterable[str], horizon_days: int = 7):
     for area in areas:
         forecast_area(area, horizon_days=horizon_days)
@@ -249,12 +307,42 @@ def main(areas: Iterable[str], horizon_days: int = 7):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--areas", nargs="+", help="Areas to forecast (default: autodetect from data folders)")
+    ap.add_argument("--areas", nargs="+", help="Areas to forecast/backtest (default: autodetect)")
     ap.add_argument("--horizon", type=int, default=7, help="Forecast horizon in days")
+    ap.add_argument("--train-window", type=int, default=120, help="Training window in days for backtest")
+    ap.add_argument("--eval-days", type=int, default=30, help="How many trailing days to evaluate in backtest")
+    ap.add_argument("--backtest-only", action="store_true", help="Run walk-forward backtest instead of writing forecasts")
     args = ap.parse_args()
 
     if args.areas:
         areas = args.areas
     else:
-        areas = [p.name for p in DATA_DIR.iterdir() if p.is_dir() and (p / "demand_forecast.csv").exists()]
-    main(areas, horizon_days=args.horizon)
+        if args.backtest_only:
+            areas = [
+                p.name
+                for p in DATA_DIR.iterdir()
+                if p.is_dir()
+                and (p / "residual_demand.csv").exists()
+                and (
+                    (p / "day_ahead_real.parquet").exists()
+                    or (p / "day_ahead_real.csv").exists()
+                    or (p / "day_ahead.parquet").exists()
+                    or (p / "day_ahead.csv").exists()
+                )
+            ]
+        else:
+            areas = [p.name for p in DATA_DIR.iterdir() if p.is_dir() and (p / "demand_forecast.csv").exists()]
+
+    if args.backtest_only:
+        rows = []
+        for area in areas:
+            res = backtest_area(area, train_window_days=args.train_window, horizon_days=args.horizon, eval_days=args.eval_days)
+            if res is None:
+                continue
+            n, rmse, mae, bias = res
+            rows.append((area, n, rmse, mae, bias))
+        print("area n_points rmse mae bias")
+        for area, n, rmse, mae, bias in sorted(rows):
+            print(f"{area:5s} {n:7d} {rmse:8.2f} {mae:8.2f} {bias:8.2f}")
+    else:
+        main(areas, horizon_days=args.horizon)
