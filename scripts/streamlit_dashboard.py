@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data.io import load_demand_series, load_tso_forecast_series, load_price_series
+from src.power_model.plants import PlantStack
 
 DATA_DIR = Path("data")
 
@@ -216,14 +217,87 @@ def price_tab():
     st.caption(" | ".join(meta))
 
 
+@st.cache_data(show_spinner=False)
+def load_plants(min_capacity: float, include_chp: bool) -> pd.DataFrame:
+    """Load DE/LU plant stack from OPSD and apply quick filters."""
+    stack = PlantStack.from_opsd()
+    df = stack.plants.copy()
+    df = df[df["capacity_mw"] >= min_capacity]
+    if not include_chp and "is_chp" in df.columns:
+        df = df[~df["is_chp"]]
+    return df.reset_index(drop=True)
+
+
+def plants_tab():
+    st.subheader("DE/LU plant stack (OPSD)")
+    min_cap = st.slider("Minimum capacity (MW)", min_value=0, max_value=1000, value=50, step=10)
+    include_chp = st.checkbox("Include CHP", value=True)
+    df = load_plants(min_capacity=min_cap, include_chp=include_chp)
+    if df.empty:
+        st.info("No plants after filters.")
+        return
+
+    total_cap = df["capacity_mw"].sum()
+    st.caption(f"{len(df)} plants | {total_cap:,.0f} MW total")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if "fuel" in df:
+            fuel_summary = df.groupby("fuel")["capacity_mw"].sum().sort_values(ascending=False)
+            st.write("Capacity by fuel (MW):")
+            st.dataframe(fuel_summary.round(1))
+    with col2:
+        if "stack_type" in df:
+            type_summary = df.groupby("stack_type")["capacity_mw"].sum().sort_values(ascending=False)
+            st.write("Capacity by stack type (MW):")
+            st.dataframe(type_summary.round(1))
+
+    map_df = df.dropna(subset=["lat", "lon"])
+    if not map_df.empty:
+        fig = go.Figure(
+            go.Scattergeo(
+                lon=map_df["lon"],
+                lat=map_df["lat"],
+                text=map_df["name"],
+                mode="markers",
+                marker=dict(size=6, color="red", opacity=0.7),
+            )
+        )
+        fig.update_geos(fitbounds="locations", showcountries=True, lataxis_showgrid=True, lonaxis_showgrid=True)
+        fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0))
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.write("Plant table")
+    display_cols = [
+        c
+        for c in [
+            "name",
+            "country",
+            "fuel",
+            "stack_type",
+            "capacity_mw",
+            "efficiency",
+            "co2_intensity",
+            "vom",
+            "is_chp",
+            "commissioned_year",
+            "eic_code",
+        ]
+        if c in df.columns
+    ]
+    st.dataframe(df[display_cols])
+
+
 def main():
     st.set_page_config(page_title="Power forecasts", layout="wide")
     st.title("Power forecasts dashboard")
-    tab1, tab2 = st.tabs(["Demand forecasts", "Price forecasts"])
+    tab1, tab2, tab3 = st.tabs(["Demand forecasts", "Price forecasts", "Plants (DE/LU)"])
     with tab1:
         demand_tab()
     with tab2:
         price_tab()
+    with tab3:
+        plants_tab()
 
 
 if __name__ == "__main__":

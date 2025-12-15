@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Fetch commodity proxies from TradingView and write data/market/commodities.csv.
+"""Fetch commodity proxies from TradingView (tvdatafeed fork) into data/market/commodities.csv.
+
+Dependency:
+  - tvdatafeed from https://github.com/rongardF/tvdatafeed (see pyproject for pin).
 
 Inputs (env):
-  - TV_USERNAME / TV_PASSWORD, or TV_SESSIONID / TV_USERID for cookie login.
+  - TV_USERNAME / TV_PASSWORD for TradingView login (anonymous use works but may be limited).
 
 Symbols (edit as needed):
   - gas:  ICEEUR:TFM1!   (TTF front month, EUR/MWh)
@@ -37,11 +40,12 @@ SYMBOLS = {
 def make_client() -> TvDatafeed:
     user = os.getenv("TV_USERNAME")
     pwd = os.getenv("TV_PASSWORD")
-    sid = os.getenv("TV_SESSIONID")
-    uid = os.getenv("TV_USERID")
-    if sid and uid:
-        return TvDatafeed(auto_login=False, token=sid, user=uid)
-    return TvDatafeed(username=user, password=pwd, auto_login=True)
+    if not user or not pwd:
+        log.warning(
+            "TV_USERNAME/TV_PASSWORD not set; falling back to anonymous TradingView session"
+        )
+        return TvDatafeed()
+    return TvDatafeed(username=user, password=pwd)
 
 
 def fetch_series(tv: TvDatafeed, symbol: str, exchange: str) -> pd.Series:
