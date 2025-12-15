@@ -27,8 +27,9 @@ pyarrow = "^22.0.0"
 pillow = "^12.0.0"
 holidays = "^0.58"
 streamlit = "^1.40.1"
-tvdatafeed = "^1.7.0"
 python-dotenv = "^1.0.0"
+tvdatafeed = {git = "https://github.com/rongardF/tvdatafeed.git"}
+catboost = "^1.2.7"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
