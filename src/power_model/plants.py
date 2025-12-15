@@ -75,10 +75,13 @@ def _map_stack_type(row: pd.Series) -> str:
     return fuel
 
 
-def enrich_thermal_plants(raw: pd.DataFrame, countries: Iterable[str] = ("DE", "LU"), min_capacity_mw: float = 20.0) -> pd.DataFrame:
-    """Filter OPSD plants to DE/LU thermal units and attach heat-rate/CO2 defaults."""
+def enrich_thermal_plants(
+    raw: pd.DataFrame, countries: Iterable[str] | None = ("DE", "LU"), min_capacity_mw: float = 20.0
+) -> pd.DataFrame:
+    """Filter OPSD plants to thermal units (optionally by country) and attach heat-rate/CO2 defaults."""
     df = raw.copy()
-    df = df[df["country"].isin(countries)]
+    if countries is not None:
+        df = df[df["country"].isin(countries)]
     df["fuel"] = df.apply(_map_fuel, axis=1)
     df = df[df["fuel"].isin(THERMAL_FUELS)]
     df["stack_type"] = df.apply(_map_stack_type, axis=1)
@@ -116,7 +119,9 @@ class PlantStack:
     plants: pd.DataFrame
 
     @classmethod
-    def from_opsd(cls, force: bool = False, countries: Iterable[str] = ("DE", "LU"), min_capacity_mw: float = 20.0) -> "PlantStack":
+    def from_opsd(
+        cls, force: bool = False, countries: Iterable[str] | None = ("DE", "LU"), min_capacity_mw: float = 20.0
+    ) -> "PlantStack":
         raw = fetch_opsd_conventional(force=force)
         enriched = enrich_thermal_plants(raw, countries=countries, min_capacity_mw=min_capacity_mw)
         return cls(plants=enriched)

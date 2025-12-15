@@ -218,9 +218,9 @@ def price_tab():
 
 
 @st.cache_data(show_spinner=False)
-def load_plants(min_capacity: float, include_chp: bool) -> pd.DataFrame:
-    """Load DE/LU plant stack from OPSD and apply quick filters."""
-    stack = PlantStack.from_opsd()
+def load_plants(min_capacity: float, include_chp: bool, countries: Tuple[str, ...]) -> pd.DataFrame:
+    """Load plant stack from OPSD and apply quick filters."""
+    stack = PlantStack.from_opsd(countries=countries if countries else None)
     df = stack.plants.copy()
     df = df[df["capacity_mw"] >= min_capacity]
     if not include_chp and "is_chp" in df.columns:
@@ -229,16 +229,22 @@ def load_plants(min_capacity: float, include_chp: bool) -> pd.DataFrame:
 
 
 def plants_tab():
-    st.subheader("DE/LU plant stack (OPSD)")
+    st.subheader("Plant stack (OPSD conventional)")
+    # build list of available countries from OPSD metadata
+    stack_all = PlantStack.from_opsd(countries=None, min_capacity_mw=0)
+    country_options = sorted(stack_all.plants["country"].dropna().unique().tolist())
+    default_countries = [c for c in ("DE", "LU") if c in country_options] or country_options[:1]
+    countries = st.multiselect("Countries", options=country_options, default=default_countries)
+    st.caption("OPSD data is country-level (e.g., DK covers DK1+DK2; NO covers NO1–NO5).")
     min_cap = st.slider("Minimum capacity (MW)", min_value=0, max_value=1000, value=50, step=10)
     include_chp = st.checkbox("Include CHP", value=True)
-    df = load_plants(min_capacity=min_cap, include_chp=include_chp)
+    df = load_plants(min_capacity=min_cap, include_chp=include_chp, countries=tuple(countries))
     if df.empty:
         st.info("No plants after filters.")
         return
 
     total_cap = df["capacity_mw"].sum()
-    st.caption(f"{len(df)} plants | {total_cap:,.0f} MW total")
+    st.caption(f"{len(df)} plants | {total_cap:,.0f} MW total | countries: {', '.join(countries)}")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -291,7 +297,7 @@ def plants_tab():
 def main():
     st.set_page_config(page_title="Power forecasts", layout="wide")
     st.title("Power forecasts dashboard")
-    tab1, tab2, tab3 = st.tabs(["Demand forecasts", "Price forecasts", "Plants (DE/LU)"])
+    tab1, tab2, tab3 = st.tabs(["Demand forecasts", "Price forecasts", "Plants (OPSD)"])
     with tab1:
         demand_tab()
     with tab2:
