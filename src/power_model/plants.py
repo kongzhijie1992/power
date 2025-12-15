@@ -80,8 +80,15 @@ def enrich_thermal_plants(
 ) -> pd.DataFrame:
     """Filter OPSD plants to thermal units (optionally by country) and attach heat-rate/CO2 defaults."""
     df = raw.copy()
-    if countries is not None:
-        df = df[df["country"].isin(countries)]
+    if countries:
+        try:
+            if isinstance(countries, str):
+                countries_list = [countries]
+            else:
+                countries_list = list(countries)
+        except TypeError:
+            countries_list = [countries]
+        df = df[df["country"].isin(countries_list)]
     df["fuel"] = df.apply(_map_fuel, axis=1)
     df = df[df["fuel"].isin(THERMAL_FUELS)]
     df["stack_type"] = df.apply(_map_stack_type, axis=1)
