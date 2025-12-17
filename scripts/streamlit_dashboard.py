@@ -21,8 +21,14 @@ DATA_DIR = Path("data")
 
 def _load_secrets_into_env():
     """Propagate Streamlit secrets to env vars so ingestion code can read tokens locally."""
-    token = st.secrets.get("ENTSOE_API_TOKEN") or st.secrets.get("ENTSOE_TOKEN")
-    if token and not os.getenv("ENTSOE_API_TOKEN"):
+    # Prefer an already-set env var; only read secrets if needed.
+    if os.getenv("ENTSOE_API_TOKEN"):
+        return
+    try:
+        token = st.secrets.get("ENTSOE_API_TOKEN") or st.secrets.get("ENTSOE_TOKEN")
+    except Exception:
+        token = None
+    if token:
         os.environ["ENTSOE_API_TOKEN"] = str(token)
 
 
