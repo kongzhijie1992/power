@@ -305,7 +305,9 @@ def _categorize_renewable_row(row: pd.Series) -> Optional[str]:
     lvl2 = str(row.get("energy_source_level_2", "")).lower()
     tech = str(row.get("technology", "")).lower()
     lvl3 = str(row.get("energy_source_level_3", "")).lower()
-    capacity = float(row.get("electrical_capacity", 0.0) or 0.0)
+    capacity = pd.to_numeric(row.get("electrical_capacity", None), errors="coerce")
+    if pd.isna(capacity):
+        capacity = 0.0
     if lvl2 == "wind":
         if "offshore" in tech or "offshore" in lvl3:
             return "wind_offshore"
@@ -593,7 +595,8 @@ class PlantStack:
         for _, row in self.plants.iterrows():
             if row.get("is_dispatchable", True) is False:
                 continue
-            plant_avail = float(row.get("availability_factor", 1.0) or 1.0)
+            plant_avail_raw = row.get("availability_factor", 1.0)
+            plant_avail = float(plant_avail_raw) if pd.notna(plant_avail_raw) else 1.0
             eff = float(row["efficiency"]) if pd.notna(row["efficiency"]) else 1.0
             blocks.append(
                 {
