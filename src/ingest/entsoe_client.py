@@ -26,19 +26,62 @@ def get_client(api_key: str = None):
     if token is None:
         raise ValueError("ENTSO-E API key not found. Put it in src/config.yaml")
     if EntsoePandasClient is None:
-        raise ImportError("entsoe-py library not available. Install `entsoe-py` in your environment.")
+        raise ImportError(
+            "entsoe-py library not available. Install `entsoe-py` in your environment."
+        )
     return EntsoePandasClient(api_key=token)
 
 
 DEFAULT_ZONES = [
-    "AL","AT","BA","BE","BG","CH","CY","CZ","DE","DK1","DK2",
-    "EE","ES","FI","FR","GB","GR","HR","HU","IE","IT","LT",
-    "LU","LV","ME","MK","MT","NL","NO1","NO2","NO3","NO4","NO5",
-    "PL","PT","RO","RS","SE1","SE2","SE3","SE4","SI","SK"
+    "AL",
+    "AT",
+    "BA",
+    "BE",
+    "BG",
+    "CH",
+    "CY",
+    "CZ",
+    "DE",
+    "DK1",
+    "DK2",
+    "EE",
+    "ES",
+    "FI",
+    "FR",
+    "GB",
+    "GR",
+    "HR",
+    "HU",
+    "IE",
+    "IT",
+    "LT",
+    "LU",
+    "LV",
+    "ME",
+    "MK",
+    "MT",
+    "NL",
+    "NO1",
+    "NO2",
+    "NO3",
+    "NO4",
+    "NO5",
+    "PL",
+    "PT",
+    "RO",
+    "RS",
+    "SE1",
+    "SE2",
+    "SE3",
+    "SE4",
+    "SI",
+    "SK",
 ]
 
 
-def fetch_day_ahead_prices(client, area: str, start: _dt.datetime, end: _dt.datetime) -> _pd.Series:
+def fetch_day_ahead_prices(
+    client, area: str, start: _dt.datetime, end: _dt.datetime
+) -> _pd.Series:
     """Fetch day-ahead prices for a single bidding zone using entsoe-py client.
 
     Returns a pandas Series indexed by UTC timestamps.
@@ -47,7 +90,7 @@ def fetch_day_ahead_prices(client, area: str, start: _dt.datetime, end: _dt.date
     series = client.query_day_ahead_prices(area, start=start, end=end)
     # entsoe-py returns timezone-aware series (Europe timezone); convert to UTC naive
     if isinstance(series.index, _pd.DatetimeIndex):
-        series = series.tz_convert('UTC').tz_localize(None)
+        series = series.tz_convert("UTC").tz_localize(None)
     return series
 
 
@@ -58,7 +101,9 @@ def fetch_multi_area_day_ahead(client, areas=None, days=90):
     """
     if areas is None:
         areas = DEFAULT_ZONES
-    end = pd.Timestamp.utcnow().replace(minute=0, second=0, microsecond=0).to_pydatetime()
+    end = (
+        pd.Timestamp.utcnow().replace(minute=0, second=0, microsecond=0).to_pydatetime()
+    )
     start = end - _dt.timedelta(days=days)
     results = {}
     for area in areas:

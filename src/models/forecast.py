@@ -2,6 +2,7 @@
 
 This module provides a simple seasonal/lag baseline and an optional LightGBM wrapper.
 """
+
 from typing import Optional
 import pandas as pd
 import numpy as np
@@ -14,34 +15,35 @@ except Exception:
 
 def make_features(series: pd.Series) -> pd.DataFrame:
     s = series.copy()
-    df = pd.DataFrame({'y': s})
-    df['hour'] = df.index.hour
-    df['dayofweek'] = df.index.dayofweek
+    df = pd.DataFrame({"y": s})
+    df["hour"] = df.index.hour
+    df["dayofweek"] = df.index.dayofweek
     # lags
     for lag in [24, 48, 168]:
-        df[f'lag_{lag}'] = df['y'].shift(lag)
+        df[f"lag_{lag}"] = df["y"].shift(lag)
     # rolling means
-    df['rmean_24'] = df['y'].rolling(24).mean()
+    df["rmean_24"] = df["y"].rolling(24).mean()
     df = df.dropna()
     return df
 
 
 def seasonal_naive_forecast(series: pd.Series, days: int = 7) -> pd.Series:
-    """Forecast next `days` days (hourly) using historical average by (hour, dayofweek).
-    """
+    """Forecast next `days` days (hourly) using historical average by (hour, dayofweek)."""
     last = series.index.max()
-    freq = series.index.inferred_freq or 'h'
+    freq = series.index.inferred_freq or "h"
     periods = days * 24
-    idx = pd.date_range(start=last + pd.Timedelta(hours=1), periods=periods, freq='h', tz='UTC')
+    idx = pd.date_range(
+        start=last + pd.Timedelta(hours=1), periods=periods, freq="h", tz="UTC"
+    )
     # historical averages
     hist = series.copy()
-    hist = hist.tz_localize('UTC') if hist.index.tz is None else hist
-    df = hist.to_frame('y')
-    df['hour'] = df.index.hour
-    df['dayofweek'] = df.index.dayofweek
-    pivot = df.groupby(['dayofweek', 'hour'])['y'].mean().sort_index()
-    hour_means = df.groupby('hour')['y'].mean()
-    global_mean = df['y'].mean()
+    hist = hist.tz_localize("UTC") if hist.index.tz is None else hist
+    df = hist.to_frame("y")
+    df["hour"] = df.index.hour
+    df["dayofweek"] = df.index.dayofweek
+    pivot = df.groupby(["dayofweek", "hour"])["y"].mean().sort_index()
+    hour_means = df.groupby("hour")["y"].mean()
+    global_mean = df["y"].mean()
     preds = []
     for ts in idx:
         val = pivot.get((ts.dayofweek, ts.hour))
@@ -57,12 +59,12 @@ def seasonal_naive_forecast(series: pd.Series, days: int = 7) -> pd.Series:
 
 def train_lgbm(series: pd.Series, params: Optional[dict] = None):
     if lgb is None:
-        raise ImportError('lightgbm not available')
+        raise ImportError("lightgbm not available")
     df = make_features(series)
-    X = df.drop(columns=['y'])
-    y = df['y']
+    X = df.drop(columns=["y"])
+    y = df["y"]
     dtrain = lgb.Dataset(X, label=y)
-    params = params or {'objective': 'regression', 'metric': 'rmse', 'verbosity': -1}
+    params = params or {"objective": "regression", "metric": "rmse", "verbosity": -1}
     booster = lgb.train(params, dtrain, num_boost_round=100)
     return booster, X.columns.tolist()
 

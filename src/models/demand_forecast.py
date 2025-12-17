@@ -3,6 +3,7 @@
 This module prepares calendar + weather features from a load series and trains
 one mean model plus optional quantile models.
 """
+
 import logging
 import pandas as pd
 import numpy as np
@@ -38,7 +39,9 @@ def _calendar_features(index: pd.DatetimeIndex, country: str = None) -> pd.DataF
     df["month"] = index.month
     df["is_weekend"] = df["dow"].isin([5, 6]).astype(int)
     # simple DST proxy: last Sunday of March/October for EU CET/CEST zones
-    df["is_dst_transition"] = ((df.index.month.isin([3, 10])) & (df.index.dayofweek == 6)).astype(int)
+    df["is_dst_transition"] = (
+        (df.index.month.isin([3, 10])) & (df.index.dayofweek == 6)
+    ).astype(int)
 
     if holidays and country:
         try:
@@ -59,7 +62,9 @@ def _calendar_features(index: pd.DatetimeIndex, country: str = None) -> pd.DataF
     return df
 
 
-def _augment_temperature_features(weather: pd.DataFrame, base_c: float = 18.0) -> pd.DataFrame:
+def _augment_temperature_features(
+    weather: pd.DataFrame, base_c: float = 18.0
+) -> pd.DataFrame:
     """
     Add temperature, HDD, and CDD features if a temperature-like column exists.
 
@@ -89,7 +94,12 @@ def _augment_temperature_features(weather: pd.DataFrame, base_c: float = 18.0) -
     return w
 
 
-def prepare_demand_features(load: pd.Series, weather: pd.DataFrame = None, add_lags: Iterable[int] = (24, 168), country: str = None) -> Tuple[pd.DataFrame, pd.Series]:
+def prepare_demand_features(
+    load: pd.Series,
+    weather: pd.DataFrame = None,
+    add_lags: Iterable[int] = (24, 168),
+    country: str = None,
+) -> Tuple[pd.DataFrame, pd.Series]:
     """Build a feature matrix for demand forecasting."""
     load = load.sort_index()
     feats = _calendar_features(load.index, country=country)
@@ -136,7 +146,9 @@ def train_demand_models(
     use_xgb: bool = False,
 ) -> Tuple[object, Dict[float, object], Dict[str, float]]:
     """Train a mean model and optional quantile models."""
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1, shuffle=False)
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.1, shuffle=False
+    )
     feature_list = list(X.columns)
 
     mean_model = _make_model(use_xgb=use_xgb)
@@ -191,7 +203,9 @@ def train_per_hod_models(
         models[hod] = m
         q_models[hod] = qs
         # quick validation for stats aggregation
-        X_train, X_val, y_train, y_val = train_test_split(X_h, y_h, test_size=0.1, shuffle=False)
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_h, y_h, test_size=0.1, shuffle=False
+        )
         m_val = _make_model(use_xgb=use_xgb)
         m_val.fit(X_train, y_train)
         y_pred_all.append(m_val.predict(X_val))
@@ -208,7 +222,11 @@ def train_per_hod_models(
     return models, q_models, stats
 
 
-def predict_demand(models: Dict[str, GradientBoostingRegressor], X_future: pd.DataFrame, quantile_models: Dict[float, GradientBoostingRegressor] = None):
+def predict_demand(
+    models: Dict[str, GradientBoostingRegressor],
+    X_future: pd.DataFrame,
+    quantile_models: Dict[float, GradientBoostingRegressor] = None,
+):
     # per-hour models dict
     if isinstance(models, dict) and not hasattr(models, "predict"):
         preds_dict = {}
@@ -227,7 +245,9 @@ def predict_demand(models: Dict[str, GradientBoostingRegressor], X_future: pd.Da
                     if hasattr(m, "feature_list_"):
                         X_aligned = X_sub.reindex(m.feature_list_, axis=1, fill_value=0)
                     key = f"q{int(q*100)}"
-                    preds_dict.setdefault(key, pd.Series(index=X_future.index, dtype=float))
+                    preds_dict.setdefault(
+                        key, pd.Series(index=X_future.index, dtype=float)
+                    )
                     preds_dict[key].loc[mask] = m.predict(X_aligned)
         return pd.DataFrame(preds_dict, index=X_future.index)
 
@@ -295,12 +315,16 @@ def prepare_error_features(
     feats["forecast_lag_24h"] = df["forecast"].shift(freq=pd.Timedelta(hours=24))
     # Use backward-looking ramps (t - t-1) to avoid leakage from future values.
     feats["forecast_ramp_1h"] = df["forecast"].diff()
-    feats["forecast_ramp_24h"] = df["forecast"] - df["forecast"].shift(freq=pd.Timedelta(hours=24))
+    feats["forecast_ramp_24h"] = df["forecast"] - df["forecast"].shift(
+        freq=pd.Timedelta(hours=24)
+    )
     # actual load lags/ramps
     feats["actual_lag_1h"] = df["actual"].shift(freq=pd.Timedelta(hours=1))
     feats["actual_lag_24h"] = df["actual"].shift(freq=pd.Timedelta(hours=24))
     feats["actual_ramp_1h"] = df["actual"].diff()
-    feats["actual_ramp_24h"] = df["actual"] - df["actual"].shift(freq=pd.Timedelta(hours=24))
+    feats["actual_ramp_24h"] = df["actual"] - df["actual"].shift(
+        freq=pd.Timedelta(hours=24)
+    )
 
     if add_lags:
         for lag in add_lags:
@@ -326,7 +350,16 @@ def build_future_error_features(
     forecast = forecast.sort_index()
     feats = _calendar_features(forecast.index, country=country)
     if weather is not None:
-        feats = pd.concat([feats, _augment_temperature_features(weather).reindex(forecast.index).ffill().fillna(0)], axis=1)
+        feats = pd.concat(
+            [
+                feats,
+                _augment_temperature_features(weather)
+                .reindex(forecast.index)
+                .ffill()
+                .fillna(0),
+            ],
+            axis=1,
+        )
     feats["forecast"] = forecast
 
     if add_lags and error_history is not None:
@@ -336,6 +369,8 @@ def build_future_error_features(
         hist_full = hist.reindex(combined_idx).ffill()
         for lag in add_lags:
             lag_delta = pd.Timedelta(hours=lag)
-            feats[f"error_lag_{lag}h"] = hist_full.shift(freq=lag_delta).reindex(forecast.index)
+            feats[f"error_lag_{lag}h"] = hist_full.shift(freq=lag_delta).reindex(
+                forecast.index
+            )
     # Forward-fill only; never backfill time-series features with future values.
     return feats.ffill().fillna(0)

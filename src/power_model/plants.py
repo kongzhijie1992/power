@@ -289,7 +289,9 @@ STACK_DEFAULTS = {
 }
 
 
-def fetch_opsd_conventional(cache_path: Path | None = None, force: bool = False) -> pd.DataFrame:
+def fetch_opsd_conventional(
+    cache_path: Path | None = None, force: bool = False
+) -> pd.DataFrame:
     """Download OPSD conventional power plants CSV (or load from cache)."""
     if cache_path is None:
         cache_path = Path("data/external/opsd_conventional_power_plants.csv")
@@ -319,7 +321,9 @@ def _categorize_renewable_row(row: pd.Series) -> Optional[str]:
     return None
 
 
-def fetch_opsd_renewable(cache_path: Path | None = None, force: bool = False) -> pd.DataFrame:
+def fetch_opsd_renewable(
+    cache_path: Path | None = None, force: bool = False
+) -> pd.DataFrame:
     """
     Download OPSD renewable power plants CSV (or load from cache) and aggregate to country-level stacks.
     We keep aggregated onshore/offshore wind and solar (utility/distributed) per country to avoid multi-million rows.
@@ -348,8 +352,12 @@ def fetch_opsd_renewable(cache_path: Path | None = None, force: bool = False) ->
         .sum()
         .rename(columns={"stack_hint": "stack_type"})
     )
-    grouped["name"] = grouped.apply(lambda r: f"{r['country']} {r['stack_type']}", axis=1)
-    grouped["energy_source"] = grouped["stack_type"].apply(lambda s: "wind" if "wind" in s else "solar")
+    grouped["name"] = grouped.apply(
+        lambda r: f"{r['country']} {r['stack_type']}", axis=1
+    )
+    grouped["energy_source"] = grouped["stack_type"].apply(
+        lambda s: "wind" if "wind" in s else "solar"
+    )
     grouped["energy_source_level_1"] = "Renewable energy"
     grouped["energy_source_level_2"] = grouped["energy_source"].str.title()
     grouped["energy_source_level_3"] = grouped["stack_type"]
@@ -498,26 +506,52 @@ def enrich_thermal_plants(
 
     df["stack_type"] = df.apply(_map_stack_type, axis=1)
     df["efficiency"] = df["stack_type"].map(lambda t: _default_for(t, "efficiency"))
-    df["co2_intensity"] = df["stack_type"].map(lambda t: _default_for(t, "co2_intensity"))
+    df["co2_intensity"] = df["stack_type"].map(
+        lambda t: _default_for(t, "co2_intensity")
+    )
     df["vom"] = df["stack_type"].map(lambda t: _default_for(t, "vom")).fillna(2.0)
 
     df["p_max_mw"] = df["capacity_mw"]
-    df["p_min_mw"] = df["capacity_mw"] * df["stack_type"].map(lambda t: _default_for(t, "p_min_ratio")).fillna(0.0)
-    df["ramp_up_mw_per_min"] = df["capacity_mw"] * df["stack_type"].map(lambda t: _default_for(t, "ramp_ratio_per_min"))
+    df["p_min_mw"] = df["capacity_mw"] * df["stack_type"].map(
+        lambda t: _default_for(t, "p_min_ratio")
+    ).fillna(0.0)
+    df["ramp_up_mw_per_min"] = df["capacity_mw"] * df["stack_type"].map(
+        lambda t: _default_for(t, "ramp_ratio_per_min")
+    )
     df["ramp_down_mw_per_min"] = df["ramp_up_mw_per_min"]
     df["min_up_hours"] = df["stack_type"].map(lambda t: _default_for(t, "min_up_hours"))
-    df["min_down_hours"] = df["stack_type"].map(lambda t: _default_for(t, "min_down_hours"))
-    df["startup_cost_eur"] = df["stack_type"].map(lambda t: _default_for(t, "startup_cost_eur"))
-    df["availability_factor"] = df["stack_type"].map(lambda t: _default_for(t, "availability_factor")).fillna(1.0)
-    df["fuel_price_eur_per_mwhth"] = df["stack_type"].map(lambda t: _default_for(t, "fuel_price_eur_per_mwhth")).fillna(0.0)
+    df["min_down_hours"] = df["stack_type"].map(
+        lambda t: _default_for(t, "min_down_hours")
+    )
+    df["startup_cost_eur"] = df["stack_type"].map(
+        lambda t: _default_for(t, "startup_cost_eur")
+    )
+    df["availability_factor"] = (
+        df["stack_type"]
+        .map(lambda t: _default_for(t, "availability_factor"))
+        .fillna(1.0)
+    )
+    df["fuel_price_eur_per_mwhth"] = (
+        df["stack_type"]
+        .map(lambda t: _default_for(t, "fuel_price_eur_per_mwhth"))
+        .fillna(0.0)
+    )
     df["co2_price_eur_per_t"] = co2_price_eur_per_t
     df["variable_om_eur_per_mwh"] = df["vom"]
-    df["heat_rate_mwh_th_per_mwh_el"] = df["efficiency"].apply(lambda eff: 1.0 / eff if pd.notna(eff) and eff > 0 else pd.NA)
-    df["is_dispatchable"] = df["stack_type"].map(lambda t: _default_for(t, "dispatchable")).fillna(True)
+    df["heat_rate_mwh_th_per_mwh_el"] = df["efficiency"].apply(
+        lambda eff: 1.0 / eff if pd.notna(eff) and eff > 0 else pd.NA
+    )
+    df["is_dispatchable"] = (
+        df["stack_type"].map(lambda t: _default_for(t, "dispatchable")).fillna(True)
+    )
 
     df["is_chp"] = df.get("chp", pd.NA)
-    df["is_chp"] = df["is_chp"].fillna("").astype(str).str.lower().isin({"yes", "y", "true", "1"})
-    df["commissioned_year"] = pd.to_numeric(df.get("commissioned", pd.NA), errors="coerce")
+    df["is_chp"] = (
+        df["is_chp"].fillna("").astype(str).str.lower().isin({"yes", "y", "true", "1"})
+    )
+    df["commissioned_year"] = pd.to_numeric(
+        df.get("commissioned", pd.NA), errors="coerce"
+    )
     df["bidding_zone"] = df.apply(_extract_bidding_zone, axis=1)
 
     keep_cols = [
@@ -602,10 +636,16 @@ class PlantStack:
                 {
                     "name": row["name"],
                     "fuel": row["fuel"],
-                    "capacity": float(row["capacity_mw"]) * availability_factor * plant_avail,
+                    "capacity": float(row["capacity_mw"])
+                    * availability_factor
+                    * plant_avail,
                     "marginal_cost": None,  # filled later in model
                     "efficiency": eff,
-                    "co2_intensity": float(row["co2_intensity"]) if pd.notna(row["co2_intensity"]) else 0.0,
+                    "co2_intensity": (
+                        float(row["co2_intensity"])
+                        if pd.notna(row["co2_intensity"])
+                        else 0.0
+                    ),
                     "vom": float(row["vom"]) if pd.notna(row["vom"]) else 0.0,
                 }
             )

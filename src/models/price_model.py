@@ -1,4 +1,5 @@
 """LightGBM-based price forecasting with calendar/lag features and optional weather."""
+
 from typing import Optional, Dict
 from pathlib import Path
 import pandas as pd
@@ -21,7 +22,9 @@ def _tz_naive(idx: pd.DatetimeIndex) -> pd.DatetimeIndex:
     return idx
 
 
-def _add_calendar_features(df: pd.DataFrame, idx: pd.DatetimeIndex, country: Optional[str]) -> pd.DataFrame:
+def _add_calendar_features(
+    df: pd.DataFrame, idx: pd.DatetimeIndex, country: Optional[str]
+) -> pd.DataFrame:
     df["hour"] = idx.hour
     df["dayofweek"] = idx.dayofweek
     df["month"] = idx.month
@@ -43,7 +46,11 @@ def _add_calendar_features(df: pd.DataFrame, idx: pd.DatetimeIndex, country: Opt
     return df
 
 
-def build_price_features(series: pd.Series, weather: Optional[pd.DataFrame] = None, country: Optional[str] = None) -> pd.DataFrame:
+def build_price_features(
+    series: pd.Series,
+    weather: Optional[pd.DataFrame] = None,
+    country: Optional[str] = None,
+) -> pd.DataFrame:
     """Construct feature matrix with lags/rolling stats and optional weather."""
     series = series.sort_index()
     idx = series.index
@@ -69,7 +76,12 @@ def build_price_features(series: pd.Series, weather: Optional[pd.DataFrame] = No
     return df.dropna()
 
 
-def train_price_model(series: pd.Series, weather: Optional[pd.DataFrame] = None, country: Optional[str] = None, params: Optional[Dict] = None):
+def train_price_model(
+    series: pd.Series,
+    weather: Optional[pd.DataFrame] = None,
+    country: Optional[str] = None,
+    params: Optional[Dict] = None,
+):
     if LGBMRegressor is None:
         raise ImportError("lightgbm is required for price model")
     feat_df = build_price_features(series, weather=weather, country=country)
@@ -92,7 +104,13 @@ def train_price_model(series: pd.Series, weather: Optional[pd.DataFrame] = None,
     return model
 
 
-def _build_recursive_features(history: pd.Series, model, weather: Optional[pd.DataFrame], horizon_hours: int, country: Optional[str]):
+def _build_recursive_features(
+    history: pd.Series,
+    model,
+    weather: Optional[pd.DataFrame],
+    horizon_hours: int,
+    country: Optional[str],
+):
     preds = []
     series_aug = history.copy()
     for i in range(horizon_hours):
@@ -108,7 +126,13 @@ def _build_recursive_features(history: pd.Series, model, weather: Optional[pd.Da
     return pd.Series({ts: val for ts, val in preds})
 
 
-def forecast_price(history: pd.Series, weather: Optional[pd.DataFrame] = None, country: Optional[str] = None, horizon_days: int = 7, params: Optional[Dict] = None) -> pd.Series:
+def forecast_price(
+    history: pd.Series,
+    weather: Optional[pd.DataFrame] = None,
+    country: Optional[str] = None,
+    horizon_days: int = 7,
+    params: Optional[Dict] = None,
+) -> pd.Series:
     """Train a model on history and forecast horizon using recursive one-hour steps."""
     history = history.sort_index()
     history.index = _tz_naive(history.index)

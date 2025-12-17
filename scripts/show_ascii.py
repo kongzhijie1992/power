@@ -17,9 +17,10 @@ except Exception:
 
 CHARS = " .:-=+*#%@"
 
+
 def ascii_preview(path, width=80):
     if Image is not None:
-        img = Image.open(path).convert('L')
+        img = Image.open(path).convert("L")
         w, h = img.size
         aspect = h / w
         new_w = int(width)
@@ -29,6 +30,7 @@ def ascii_preview(path, width=80):
     elif mpimg is not None:
         # Read image via matplotlib and downsample using numpy (no Pillow required)
         import numpy as _np
+
         arr = mpimg.imread(str(path))
         if arr.ndim == 3:
             # convert RGB(A) to grayscale luminance
@@ -67,29 +69,29 @@ def ascii_preview(path, width=80):
 
     lines = []
     for y in range(new_h):
-        row = pixels[y * new_w:(y + 1) * new_w]
-        line = ''.join(CHARS[int(px / 255 * (len(CHARS) - 1))] for px in row)
+        row = pixels[y * new_w : (y + 1) * new_w]
+        line = "".join(CHARS[int(px / 255 * (len(CHARS) - 1))] for px in row)
         lines.append(line)
-    print('\n'.join(lines))
+    print("\n".join(lines))
     return 0
 
 
 def main():
     if len(sys.argv) < 2:
-        print('Usage: show_ascii.py <image> [--width N]')
+        print("Usage: show_ascii.py <image> [--width N]")
         raise SystemExit(2)
     path = Path(sys.argv[1])
     width = 80
-    if '--width' in sys.argv:
+    if "--width" in sys.argv:
         try:
-            width = int(sys.argv[sys.argv.index('--width') + 1])
+            width = int(sys.argv[sys.argv.index("--width") + 1])
         except Exception:
             pass
     if not path.exists():
-        print(f'Image not found: {path}')
+        print(f"Image not found: {path}")
         raise SystemExit(2)
     raise SystemExit(ascii_preview(path, width))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

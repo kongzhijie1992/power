@@ -6,6 +6,7 @@ This module:
 - Provides walk-forward backtesting and probabilistic forecasts.
 - Falls back to seasonal-naive if LightGBM/weather unavailable.
 """
+
 from typing import Tuple, Optional, Dict
 import numpy as np
 import pandas as pd
@@ -29,7 +30,9 @@ except Exception:
     add_gfs_features = None
 
 
-def build_features_with_weather(series: pd.Series, lat: float = 52.5, lon: float = 13.4) -> Tuple[pd.DataFrame, list]:
+def build_features_with_weather(
+    series: pd.Series, lat: float = 52.5, lon: float = 13.4
+) -> Tuple[pd.DataFrame, list]:
     """Build price features with optional weather data (wind, solar).
 
     Returns (feature DataFrame, feature column names).
@@ -43,26 +46,37 @@ def build_features_with_weather(series: pd.Series, lat: float = 52.5, lon: float
         try:
             weather_df = add_gfs_features(series.index, lat=lat, lon=lon)
             df = pd.concat([df, weather_df], axis=1)
-            logger.info('Added %d weather features', len(weather_df.columns))
+            logger.info("Added %d weather features", len(weather_df.columns))
             feature_cols.extend(weather_df.columns.tolist())
         except Exception as e:
-            logger.warning('Weather feature extraction failed: %s', e)
+            logger.warning("Weather feature extraction failed: %s", e)
     return df.dropna(), feature_cols
 
 
-def cv_train_lgbm(series: pd.Series, n_splits: int = 3, params: Optional[dict] = None, lat: float = 52.5, lon: float = 13.4) -> Tuple[Optional[object], dict]:
+def cv_train_lgbm(
+    series: pd.Series,
+    n_splits: int = 3,
+    params: Optional[dict] = None,
+    lat: float = 52.5,
+    lon: float = 13.4,
+) -> Tuple[Optional[object], dict]:
     """Train LightGBM with time-series CV, optionally using weather features."""
     if lgb is None:
-        logger.warning('lightgbm not installed')
-        return None, {'rmse': None, 'note': 'lightgbm not installed'}
+        logger.warning("lightgbm not installed")
+        return None, {"rmse": None, "note": "lightgbm not installed"}
     df, feature_cols = build_features_with_weather(series, lat=lat, lon=lon)
-    X = df.drop(columns=['y'])
-    y = df['y']
+    X = df.drop(columns=["y"])
+    y = df["y"]
     tscv = TimeSeriesSplit(n_splits=n_splits)
     rmses = []
     maes = []
     models = []
-    params = params or {'objective': 'regression', 'metric': 'rmse', 'verbosity': -1, 'num_leaves': 31}
+    params = params or {
+        "objective": "regression",
+        "metric": "rmse",
+        "verbosity": -1,
+        "num_leaves": 31,
+    }
     for train_idx, test_idx in tscv.split(X):
         Xtr, Xte = X.iloc[train_idx], X.iloc[test_idx]
         ytr, yte = y.iloc[train_idx], y.iloc[test_idx]
@@ -74,27 +88,41 @@ def cv_train_lgbm(series: pd.Series, n_splits: int = 3, params: Optional[dict] =
         rmses.append(rmse)
         maes.append(mae)
         models.append(booster)
-    return models[-1], {'rmse': float(np.mean(rmses)), 'mae': float(np.mean(maes)), 'rmse_splits': [float(x) for x in rmses]}
+    return models[-1], {
+        "rmse": float(np.mean(rmses)),
+        "mae": float(np.mean(maes)),
+        "rmse_splits": [float(x) for x in rmses],
+    }
 
 
-def quantile_models_train(series: pd.Series, quantiles=(0.1, 0.5, 0.9), lat: float = 52.5, lon: float = 13.4) -> Optional[Dict]:
+def quantile_models_train(
+    series: pd.Series, quantiles=(0.1, 0.5, 0.9), lat: float = 52.5, lon: float = 13.4
+) -> Optional[Dict]:
     """Train separate LightGBM quantile models for probabilistic forecasts."""
     if lgb is None:
-        logger.warning('lightgbm not installed; skipping quantile models')
+        logger.warning("lightgbm not installed; skipping quantile models")
         return None
     df, _ = build_features_with_weather(series, lat=lat, lon=lon)
-    X = df.drop(columns=['y'])
-    y = df['y']
+    X = df.drop(columns=["y"])
+    y = df["y"]
     models = {}
     for q in quantiles:
-        params = {'objective': 'quantile', 'alpha': q, 'metric': 'quantile', 'verbosity': -1, 'num_leaves': 31}
+        params = {
+            "objective": "quantile",
+            "alpha": q,
+            "metric": "quantile",
+            "verbosity": -1,
+            "num_leaves": 31,
+        }
         dtrain = lgb.Dataset(X, label=y)
         models[q] = lgb.train(params, dtrain, num_boost_round=200)
-        logger.info('Trained quantile model for q=%.2f', q)
+        logger.info("Trained quantile model for q=%.2f", q)
     return models
 
 
-def predict_with_model(model, history: pd.Series, days: int = 7, lat: float = 52.5, lon: float = 13.4) -> pd.Series:
+def predict_with_model(
+    model, history: pd.Series, days: int = 7, lat: float = 52.5, lon: float = 13.4
+) -> pd.Series:
     """Generate forecast using trained model or fallback to seasonal-naive."""
     if model is None:
         return seasonal_naive_forecast(history, days=days)
@@ -103,7 +131,13 @@ def predict_with_model(model, history: pd.Series, days: int = 7, lat: float = 52
     return seasonal_naive_forecast(history, days=days)
 
 
-def predict_quantile(models: Dict, history: pd.Series, days: int = 7, lat: float = 52.5, lon: float = 13.4) -> Dict[float, pd.Series]:
+def predict_quantile(
+    models: Dict,
+    history: pd.Series,
+    days: int = 7,
+    lat: float = 52.5,
+    lon: float = 13.4,
+) -> Dict[float, pd.Series]:
     """Generate quantile forecasts using quantile models."""
     if models is None:
         naive = seasonal_naive_forecast(history, days=days)

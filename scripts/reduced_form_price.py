@@ -143,8 +143,10 @@ def calibrate_stack(price: pd.Series, net_load: pd.Series) -> StackParams:
 
 def scarcity_adder(net_load: pd.Series, params: StackParams) -> pd.Series:
     margin = net_load / params.capacity
-    scarcity = np.clip((margin - params.scarcity_threshold) / (1 - params.scarcity_threshold), 0, None)
-    return pd.Series(params.scarcity_scale * scarcity ** 2, index=net_load.index)
+    scarcity = np.clip(
+        (margin - params.scarcity_threshold) / (1 - params.scarcity_threshold), 0, None
+    )
+    return pd.Series(params.scarcity_scale * scarcity**2, index=net_load.index)
 
 
 def build_stack_price(net_load: pd.Series, params: StackParams) -> pd.Series:
@@ -152,7 +154,9 @@ def build_stack_price(net_load: pd.Series, params: StackParams) -> pd.Series:
     return base + scarcity_adder(net_load, params)
 
 
-def compute_ratio(residual: pd.Series, demand_fc: pd.Series, window_days: int = 60) -> float:
+def compute_ratio(
+    residual: pd.Series, demand_fc: pd.Series, window_days: int = 60
+) -> float:
     df = pd.concat([residual, demand_fc], axis=1, join="inner").dropna()
     if len(df) == 0:
         return 1.0
@@ -210,7 +214,9 @@ def fit_residual_model(
     feat = build_features(
         base["net_load"],
         base["stack"],
-        commodities=commodities.reindex(base.index).ffill() if commodities is not None else None,
+        commodities=(
+            commodities.reindex(base.index).ffill() if commodities is not None else None
+        ),
         eta_gas=eta_gas,
         eta_coal=eta_coal,
         ef_gas=ef_gas,
@@ -364,7 +370,9 @@ def backtest_area(
             ef_coal=ef_coal,
         )
 
-        target_net = net[(net.index > ref) & (net.index <= ref + pd.Timedelta(days=horizon_days))]
+        target_net = net[
+            (net.index > ref) & (net.index <= ref + pd.Timedelta(days=horizon_days))
+        ]
         if target_net.empty:
             continue
         stack_fc = build_stack_price(target_net, params)
@@ -420,16 +428,44 @@ def main(
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--areas", nargs="+", help="Areas to forecast/backtest (default: autodetect)")
+    ap.add_argument(
+        "--areas", nargs="+", help="Areas to forecast/backtest (default: autodetect)"
+    )
     ap.add_argument("--horizon", type=int, default=7, help="Forecast horizon in days")
-    ap.add_argument("--train-window", type=int, default=120, help="Training window in days for backtest")
-    ap.add_argument("--eval-days", type=int, default=30, help="How many trailing days to evaluate in backtest")
-    ap.add_argument("--commodities-file", type=Path, help="CSV/Parquet with datetime, gas, coal, co2 columns")
-    ap.add_argument("--eta-gas", type=float, default=0.55, help="Gas fleet efficiency (electric)")
-    ap.add_argument("--eta-coal", type=float, default=0.38, help="Coal fleet efficiency (electric)")
-    ap.add_argument("--ef-gas", type=float, default=0.36, help="Gas CO2 intensity t/MWh_e")
-    ap.add_argument("--ef-coal", type=float, default=0.90, help="Coal CO2 intensity t/MWh_e")
-    ap.add_argument("--backtest-only", action="store_true", help="Run walk-forward backtest instead of writing forecasts")
+    ap.add_argument(
+        "--train-window",
+        type=int,
+        default=120,
+        help="Training window in days for backtest",
+    )
+    ap.add_argument(
+        "--eval-days",
+        type=int,
+        default=30,
+        help="How many trailing days to evaluate in backtest",
+    )
+    ap.add_argument(
+        "--commodities-file",
+        type=Path,
+        help="CSV/Parquet with datetime, gas, coal, co2 columns",
+    )
+    ap.add_argument(
+        "--eta-gas", type=float, default=0.55, help="Gas fleet efficiency (electric)"
+    )
+    ap.add_argument(
+        "--eta-coal", type=float, default=0.38, help="Coal fleet efficiency (electric)"
+    )
+    ap.add_argument(
+        "--ef-gas", type=float, default=0.36, help="Gas CO2 intensity t/MWh_e"
+    )
+    ap.add_argument(
+        "--ef-coal", type=float, default=0.90, help="Coal CO2 intensity t/MWh_e"
+    )
+    ap.add_argument(
+        "--backtest-only",
+        action="store_true",
+        help="Run walk-forward backtest instead of writing forecasts",
+    )
     args = ap.parse_args()
 
     commodities = load_commodities(args.commodities_file)
@@ -451,7 +487,11 @@ if __name__ == "__main__":
                 )
             ]
         else:
-            areas = [p.name for p in DATA_DIR.iterdir() if p.is_dir() and (p / "demand_forecast.csv").exists()]
+            areas = [
+                p.name
+                for p in DATA_DIR.iterdir()
+                if p.is_dir() and (p / "demand_forecast.csv").exists()
+            ]
 
     if args.backtest_only:
         rows = []

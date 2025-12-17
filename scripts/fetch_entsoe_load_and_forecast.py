@@ -25,6 +25,7 @@ import pandas as pd
 # Best-effort dotenv load so CLI can stay simple
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except Exception:
     env_path = Path(__file__).parents[1] / ".env"
@@ -92,7 +93,9 @@ def _parse_date(d):
     return dt.datetime.strptime(str(d), "%Y-%m-%d").date()
 
 
-def _chunk_ranges(start: dt.date, end: dt.date, chunk_days: int) -> Iterable[Tuple[dt.date, dt.date]]:
+def _chunk_ranges(
+    start: dt.date, end: dt.date, chunk_days: int
+) -> Iterable[Tuple[dt.date, dt.date]]:
     cursor = start
     while cursor <= end:
         chunk_end = min(cursor + dt.timedelta(days=chunk_days - 1), end)
@@ -121,10 +124,14 @@ def _merge_timeseries(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame
     return combined
 
 
-def fetch_load_and_forecast(client, area: str, start_date, end_date) -> Tuple[pd.Series, pd.Series]:
+def fetch_load_and_forecast(
+    client, area: str, start_date, end_date
+) -> Tuple[pd.Series, pd.Series]:
     """Return actual load + day-ahead forecast as two Series (UTC-naive)."""
     start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize("Europe/Brussels")
-    end_ts = (pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)).tz_localize("Europe/Brussels")
+    end_ts = (pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)).tz_localize(
+        "Europe/Brussels"
+    )
 
     candidates = [area, ALT_CODES.get(area), AREA_MAP.get(area)]
     last_error = None
@@ -150,10 +157,16 @@ def fetch_load_and_forecast(client, area: str, start_date, end_date) -> Tuple[pd
         forecast = pd.Series(dtype=float)
     else:
         col_lower = {c.lower(): c for c in df.columns}
-        actual_col = col_lower.get("load") or col_lower.get("actual load") or list(df.columns)[0]
-        forecast_col = col_lower.get("day-ahead total load forecast") or col_lower.get("forecasted load")
+        actual_col = (
+            col_lower.get("load") or col_lower.get("actual load") or list(df.columns)[0]
+        )
+        forecast_col = col_lower.get("day-ahead total load forecast") or col_lower.get(
+            "forecasted load"
+        )
         actual = df[actual_col] if actual_col in df.columns else df.iloc[:, 0]
-        forecast = df[forecast_col] if forecast_col and forecast_col in df.columns else None
+        forecast = (
+            df[forecast_col] if forecast_col and forecast_col in df.columns else None
+        )
 
     if forecast is None or forecast.empty:
         # fallback to separate calls
@@ -192,7 +205,11 @@ def main():
     p.add_argument("--end-date", default=dt.date.today().isoformat())
     p.add_argument("--chunk-days", type=int, default=90)
     p.add_argument("--parquet", action="store_true", help="Also write Parquet")
-    p.add_argument("--merge-existing", action="store_true", help="Merge fetched window into existing CSVs instead of overwriting")
+    p.add_argument(
+        "--merge-existing",
+        action="store_true",
+        help="Merge fetched window into existing CSVs instead of overwriting",
+    )
     args = p.parse_args()
 
     api_token = os.getenv("ENTSOE_API_TOKEN")
@@ -201,10 +218,18 @@ def main():
     try:
         from entsoe import EntsoePandasClient
     except ImportError:
-        raise SystemExit("entsoe-py not installed. Install with `pip install entsoe-py`.")
+        raise SystemExit(
+            "entsoe-py not installed. Install with `pip install entsoe-py`."
+        )
 
     areas = args.areas if args.areas else [args.area]
-    ranges = list(_chunk_ranges(_parse_date(args.start_date), _parse_date(args.end_date), max(args.chunk_days, 1)))
+    ranges = list(
+        _chunk_ranges(
+            _parse_date(args.start_date),
+            _parse_date(args.end_date),
+            max(args.chunk_days, 1),
+        )
+    )
     print(f"Planned calls per area: {len(ranges)} chunks (actual + forecast)")
 
     client = EntsoePandasClient(api_key=api_token)
@@ -235,9 +260,14 @@ def main():
 
         # clamp to requested window (UTC naive)
         start_ts = pd.Timestamp(_parse_date(args.start_date))
-        end_ts = pd.Timestamp(_parse_date(args.end_date) + dt.timedelta(days=1)) - pd.Timedelta(hours=1)
+        end_ts = pd.Timestamp(
+            _parse_date(args.end_date) + dt.timedelta(days=1)
+        ) - pd.Timedelta(hours=1)
         actual = actual[(actual.index >= start_ts) & (actual.index <= end_ts)]
-        forecast = forecast[(forecast.index >= start_ts) & (forecast.index <= end_ts + pd.Timedelta(days=1))]
+        forecast = forecast[
+            (forecast.index >= start_ts)
+            & (forecast.index <= end_ts + pd.Timedelta(days=1))
+        ]
 
         area_dir = Path("data") / area
         area_dir.mkdir(parents=True, exist_ok=True)
@@ -255,13 +285,17 @@ def main():
                     old = _read_ts_csv(actual_csv)
                     to_write_actual = _merge_timeseries(old, actual_df)
                 except Exception as e:
-                    print(f"⚠️  Failed to merge existing actual load for {area}: {e}; overwriting.")
+                    print(
+                        f"⚠️  Failed to merge existing actual load for {area}: {e}; overwriting."
+                    )
             if forecast_csv.exists():
                 try:
                     old = _read_ts_csv(forecast_csv)
                     to_write_forecast = _merge_timeseries(old, forecast_df)
                 except Exception as e:
-                    print(f"⚠️  Failed to merge existing forecast load for {area}: {e}; overwriting.")
+                    print(
+                        f"⚠️  Failed to merge existing forecast load for {area}: {e}; overwriting."
+                    )
 
         to_write_actual.to_csv(actual_csv, index_label="datetime")
         to_write_forecast.to_csv(forecast_csv, index_label="datetime")

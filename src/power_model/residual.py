@@ -15,26 +15,44 @@ class ResidualModel:
     feature_cols: Sequence[str]
     quantiles: Sequence[float] = (0.1, 0.5, 0.9)
     point_params: Dict = field(
-        default_factory=lambda: {"loss_function": "RMSE", "depth": 6, "learning_rate": 0.05, "iterations": 200}
+        default_factory=lambda: {
+            "loss_function": "RMSE",
+            "depth": 6,
+            "learning_rate": 0.05,
+            "iterations": 200,
+        }
     )
-    quantile_params: Dict = field(default_factory=lambda: {"iterations": 200, "depth": 6, "learning_rate": 0.05})
+    quantile_params: Dict = field(
+        default_factory=lambda: {"iterations": 200, "depth": 6, "learning_rate": 0.05}
+    )
 
     def __post_init__(self):
         self.point_model: CatBoostRegressor | None = None
         self.quantile_models: Dict[float, CatBoostRegressor] = {}
 
     @staticmethod
-    def _residuals(df: pd.DataFrame, target_col: str, structural_col: str) -> np.ndarray:
+    def _residuals(
+        df: pd.DataFrame, target_col: str, structural_col: str
+    ) -> np.ndarray:
         return (df[target_col] - df[structural_col]).to_numpy()
 
-    def fit(self, df: pd.DataFrame, target_col: str = "price_da", structural_col: str = "structural_price") -> "ResidualModel":
+    def fit(
+        self,
+        df: pd.DataFrame,
+        target_col: str = "price_da",
+        structural_col: str = "structural_price",
+    ) -> "ResidualModel":
         X = df[self.feature_cols]
         y = self._residuals(df, target_col, structural_col)
         self.point_model = CatBoostRegressor(**self.point_params, verbose=False)
         self.point_model.fit(X, y)
         self.quantile_models = {}
         for q in self.quantiles:
-            model = CatBoostRegressor(loss_function=f"Quantile:alpha={q}", **self.quantile_params, verbose=False)
+            model = CatBoostRegressor(
+                loss_function=f"Quantile:alpha={q}",
+                **self.quantile_params,
+                verbose=False,
+            )
             model.fit(X, y)
             self.quantile_models[q] = model
         return self
@@ -60,7 +78,9 @@ class ResidualModel:
             maes.append(mean_absolute_error(test_y, preds))
         return float(np.mean(maes)) if maes else float("nan")
 
-    def predict(self, df: pd.DataFrame, structural_col: str = "structural_price") -> pd.DataFrame:
+    def predict(
+        self, df: pd.DataFrame, structural_col: str = "structural_price"
+    ) -> pd.DataFrame:
         if self.point_model is None:
             raise RuntimeError("Model not fitted")
         X = df[self.feature_cols]

@@ -68,9 +68,13 @@ class BacktestRunner:
             preds["price_da"] = day_slice[target_col]
 
             positions = self.trading_engine.make_positions(
-                preds, structural=day_slice["structural_price"], history_prices=train_slice[target_col]
+                preds,
+                structural=day_slice["structural_price"],
+                history_prices=train_slice[target_col],
             )
-            pnl = self.trading_engine.compute_pnl(positions, actual_price=day_slice[target_col])
+            pnl = self.trading_engine.compute_pnl(
+                positions, actual_price=day_slice[target_col]
+            )
             pnl_rows.append(pnl.assign(day=day))
             pred_rows.append(preds.assign(day=day))
 
@@ -79,6 +83,10 @@ class BacktestRunner:
 
         daily = pnl_df.groupby("day")["pnl"].sum().to_frame("daily_pnl")
         daily["cum_pnl"] = daily["daily_pnl"].cumsum()
-        daily["sharpe_like"] = daily["daily_pnl"].mean() / (daily["daily_pnl"].std() + 1e-6) if not daily.empty else np.nan
+        daily["sharpe_like"] = (
+            daily["daily_pnl"].mean() / (daily["daily_pnl"].std() + 1e-6)
+            if not daily.empty
+            else np.nan
+        )
 
         return BacktestResult(pnl=pnl_df, predictions=preds_df, daily_summary=daily)

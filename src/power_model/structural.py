@@ -6,12 +6,48 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from .plants import PlantStack
+
 DEFAULT_BLOCKS = [
-    {"name": "lignite", "fuel": "lignite", "capacity_mw": 8000, "efficiency": 0.38, "co2_intensity": 1.05, "vom": 1.0},
-    {"name": "coal", "fuel": "coal", "capacity_mw": 12000, "efficiency": 0.40, "co2_intensity": 0.9, "vom": 2.0},
-    {"name": "ccgt_efficient", "fuel": "gas", "capacity_mw": 15000, "efficiency": 0.58, "co2_intensity": 0.36, "vom": 2.0},
-    {"name": "ccgt_marginal", "fuel": "gas", "capacity_mw": 8000, "efficiency": 0.50, "co2_intensity": 0.36, "vom": 2.5},
-    {"name": "ocgt", "fuel": "gas", "capacity_mw": 2000, "efficiency": 0.34, "co2_intensity": 0.36, "vom": 4.0},
+    {
+        "name": "lignite",
+        "fuel": "lignite",
+        "capacity_mw": 8000,
+        "efficiency": 0.38,
+        "co2_intensity": 1.05,
+        "vom": 1.0,
+    },
+    {
+        "name": "coal",
+        "fuel": "coal",
+        "capacity_mw": 12000,
+        "efficiency": 0.40,
+        "co2_intensity": 0.9,
+        "vom": 2.0,
+    },
+    {
+        "name": "ccgt_efficient",
+        "fuel": "gas",
+        "capacity_mw": 15000,
+        "efficiency": 0.58,
+        "co2_intensity": 0.36,
+        "vom": 2.0,
+    },
+    {
+        "name": "ccgt_marginal",
+        "fuel": "gas",
+        "capacity_mw": 8000,
+        "efficiency": 0.50,
+        "co2_intensity": 0.36,
+        "vom": 2.5,
+    },
+    {
+        "name": "ocgt",
+        "fuel": "gas",
+        "capacity_mw": 2000,
+        "efficiency": 0.34,
+        "co2_intensity": 0.36,
+        "vom": 4.0,
+    },
 ]
 
 
@@ -73,7 +109,11 @@ class StructuralStackModel:
         for block in self.config.blocks:
             fuel_price = self._fuel_price(row, block["fuel"])
             co2_price = float(row.get("eua_price", 0.0))
-            srmc = fuel_price / block["efficiency"] + co2_price * block["co2_intensity"] + block["vom"]
+            srmc = (
+                fuel_price / block["efficiency"]
+                + co2_price * block["co2_intensity"]
+                + block["vom"]
+            )
             blocks.append(
                 {
                     "name": block["name"],
@@ -86,7 +126,7 @@ class StructuralStackModel:
 
     def _scarcity_uplift(self, reserve_margin: float) -> float:
         shortfall = max(0.0, self.config.reserve_margin_floor - reserve_margin)
-        return self.config.uplift_scale * (shortfall ** self.config.uplift_power)
+        return self.config.uplift_scale * (shortfall**self.config.uplift_power)
 
     def _clear_price(
         self,
@@ -107,7 +147,13 @@ class StructuralStackModel:
 
         for block in sorted_blocks:
             take = min(block["capacity"], remaining)
-            dispatched.append({"name": block["name"], "dispatched_mw": take, "marginal_cost": block["marginal_cost"]})
+            dispatched.append(
+                {
+                    "name": block["name"],
+                    "dispatched_mw": take,
+                    "marginal_cost": block["marginal_cost"],
+                }
+            )
             remaining -= take
             if remaining <= 0:
                 price = block["marginal_cost"]
@@ -118,11 +164,21 @@ class StructuralStackModel:
         reserve_margin = (total_cap - (demand_mw - renewable_mw)) / max(demand_mw, 1.0)
         uplift = self._scarcity_uplift(reserve_margin)
         price_with_uplift = price + uplift
-        return price_with_uplift, {"dispatched": dispatched, "reserve_margin": reserve_margin, "uplift": uplift}
+        return price_with_uplift, {
+            "dispatched": dispatched,
+            "reserve_margin": reserve_margin,
+            "uplift": uplift,
+        }
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute structural price time series."""
-        required = ["load_forecast", "wind_forecast", "solar_forecast", "gas_price", "eua_price"]
+        required = [
+            "load_forecast",
+            "wind_forecast",
+            "solar_forecast",
+            "gas_price",
+            "eua_price",
+        ]
         missing = [c for c in required if c not in df.columns]
         if missing:
             raise ValueError(f"missing structural inputs: {missing}")
@@ -134,7 +190,14 @@ class StructuralStackModel:
             renewable = max(0.0, wind + solar)
             blocks = self._available_blocks(row)
             price, detail = self._clear_price(demand, renewable, blocks)
-            out_rows.append({"datetime": ts, "structural_price": price, "reserve_margin": detail.get("reserve_margin", 0.0), "scarcity_uplift": detail.get("uplift", 0.0)})
+            out_rows.append(
+                {
+                    "datetime": ts,
+                    "structural_price": price,
+                    "reserve_margin": detail.get("reserve_margin", 0.0),
+                    "scarcity_uplift": detail.get("uplift", 0.0),
+                }
+            )
         out = pd.DataFrame(out_rows).set_index("datetime")
         return out
 
@@ -142,7 +205,9 @@ class StructuralStackModel:
 class PlantStackModel(StructuralStackModel):
     """Structural model using plant-level stack instead of aggregated blocks."""
 
-    def __init__(self, plant_stack: PlantStack, config: Optional[StructuralConfig] = None):
+    def __init__(
+        self, plant_stack: PlantStack, config: Optional[StructuralConfig] = None
+    ):
         super().__init__(config)
         self.plant_stack = plant_stack
 
@@ -159,7 +224,11 @@ class PlantStackModel(StructuralStackModel):
             eff = eff if eff > 0 else 1.0
             plant_avail_raw = plant.get("availability_factor", 1.0)
             plant_avail = float(plant_avail_raw) if pd.notna(plant_avail_raw) else 1.0
-            srmc = fuel_price / eff + co2_price * float(plant["co2_intensity"]) + float(plant["vom"])
+            srmc = (
+                fuel_price / eff
+                + co2_price * float(plant["co2_intensity"])
+                + float(plant["vom"])
+            )
             blocks.append(
                 {
                     "name": plant["name"],

@@ -94,9 +94,11 @@ def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
     except FileNotFoundError:
         tso = pd.Series(dtype=float)
 
-    quantiles = fc[[c for c in fc.columns if c.startswith("corrected_q")]].copy() if any(
-        c.startswith("corrected_q") for c in fc.columns
-    ) else None
+    quantiles = (
+        fc[[c for c in fc.columns if c.startswith("corrected_q")]].copy()
+        if any(c.startswith("corrected_q") for c in fc.columns)
+        else None
+    )
 
     idx_union = fc.index
     if not actual.empty:
@@ -121,7 +123,9 @@ def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
     return merged.dropna(how="all"), quantiles
 
 
-def load_price_data(area: str) -> Tuple[pd.Series, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+def load_price_data(
+    area: str,
+) -> Tuple[pd.Series, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     actual = load_price_series(area).sort_index()
     if isinstance(actual.index, pd.DatetimeIndex) and actual.index.tz is not None:
         actual.index = actual.index.tz_convert("UTC").tz_localize(None)
@@ -142,8 +146,14 @@ def load_price_data(area: str) -> Tuple[pd.Series, Optional[pd.DataFrame], Optio
 def demand_tab():
     st.subheader("Demand forecasts")
     areas = _list_areas_with_file("demand_forecast.csv")
-    area = st.selectbox("Bidding zone", options=areas, index=(areas.index("DE_LU") if "DE_LU" in areas else 0))
-    horizon = st.selectbox("Time horizon", options=["7d", "30d", "90d", "180d", "365d", "all"], index=2)
+    area = st.selectbox(
+        "Bidding zone",
+        options=areas,
+        index=(areas.index("DE_LU") if "DE_LU" in areas else 0),
+    )
+    horizon = st.selectbox(
+        "Time horizon", options=["7d", "30d", "90d", "180d", "365d", "all"], index=2
+    )
 
     df, quantiles = load_demand_data(area)
     df = _apply_horizon(df, horizon)
@@ -152,16 +162,34 @@ def demand_tab():
 
     fig = go.Figure()
     if "actual_load" in df:
-        fig.add_trace(go.Scatter(x=df.index, y=df["actual_load"], mode="lines", name="Actual load"))
+        fig.add_trace(
+            go.Scatter(
+                x=df.index, y=df["actual_load"], mode="lines", name="Actual load"
+            )
+        )
     if "tso_forecast" in df:
         fig.add_trace(
-            go.Scatter(x=df.index, y=df["tso_forecast"], mode="lines", name="TSO forecast", line=dict(dash="dot"))
+            go.Scatter(
+                x=df.index,
+                y=df["tso_forecast"],
+                mode="lines",
+                name="TSO forecast",
+                line=dict(dash="dot"),
+            )
         )
     if "corrected_mean" in df:
         fig.add_trace(
-            go.Scatter(x=df.index, y=df["corrected_mean"], mode="lines", name="Model (corrected)", line=dict(color="#d62728"))
+            go.Scatter(
+                x=df.index,
+                y=df["corrected_mean"],
+                mode="lines",
+                name="Model (corrected)",
+                line=dict(color="#d62728"),
+            )
         )
-    if quantiles is not None and {"corrected_q10", "corrected_q90"}.issubset(quantiles.columns):
+    if quantiles is not None and {"corrected_q10", "corrected_q90"}.issubset(
+        quantiles.columns
+    ):
         fig.add_trace(
             go.Scatter(
                 x=quantiles.index,
@@ -183,20 +211,34 @@ def demand_tab():
                 name="Model q10–q90",
             )
         )
-    fig.update_layout(yaxis_title="MW", xaxis_title="Time", height=500, legend_orientation="h")
+    fig.update_layout(
+        yaxis_title="MW", xaxis_title="Time", height=500, legend_orientation="h"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-    st.caption(f"{area} | points: {len(df):,} | span: {df.index.min()} → {df.index.max()}")
+    st.caption(
+        f"{area} | points: {len(df):,} | span: {df.index.min()} → {df.index.max()}"
+    )
 
 
 def price_tab():
     st.subheader("Price forecasts")
     areas = _list_areas_with_file("day_ahead.csv")
-    area = st.selectbox("Price area", options=areas, index=(areas.index("DE_LU") if "DE_LU" in areas else 0))
-    horizon = st.selectbox("Price horizon", options=["7d", "30d", "90d", "180d", "365d", "all"], index=2)
+    area = st.selectbox(
+        "Price area",
+        options=areas,
+        index=(areas.index("DE_LU") if "DE_LU" in areas else 0),
+    )
+    horizon = st.selectbox(
+        "Price horizon", options=["7d", "30d", "90d", "180d", "365d", "all"], index=2
+    )
 
     actual, forward, history = load_price_data(area)
-    actual = _apply_horizon(actual.to_frame("value"), horizon)["value"] if not actual.empty else actual
+    actual = (
+        _apply_horizon(actual.to_frame("value"), horizon)["value"]
+        if not actual.empty
+        else actual
+    )
     if forward is not None:
         forward = _apply_horizon(forward, horizon)
     if history is not None:
@@ -204,11 +246,31 @@ def price_tab():
 
     fig = go.Figure()
     if len(actual) > 0:
-        fig.add_trace(go.Scatter(x=actual.index, y=actual.values, mode="lines", name="Actual price"))
+        fig.add_trace(
+            go.Scatter(
+                x=actual.index, y=actual.values, mode="lines", name="Actual price"
+            )
+        )
     if history is not None and "pred" in history:
-        fig.add_trace(go.Scatter(x=history.index, y=history["pred"], mode="lines", name="Historical pred", line=dict(color="#ff7f0e")))
+        fig.add_trace(
+            go.Scatter(
+                x=history.index,
+                y=history["pred"],
+                mode="lines",
+                name="Historical pred",
+                line=dict(color="#ff7f0e"),
+            )
+        )
     if forward is not None and "mean" in forward:
-        fig.add_trace(go.Scatter(x=forward.index, y=forward["mean"], mode="lines", name="Forward pred", line=dict(color="#d62728")))
+        fig.add_trace(
+            go.Scatter(
+                x=forward.index,
+                y=forward["mean"],
+                mode="lines",
+                name="Forward pred",
+                line=dict(color="#d62728"),
+            )
+        )
     if forward is not None and {"q10", "q90"}.issubset(forward.columns):
         fig.add_trace(
             go.Scatter(
@@ -231,12 +293,16 @@ def price_tab():
                 name="Forward q10–q90",
             )
         )
-    fig.update_layout(yaxis_title="EUR/MWh", xaxis_title="Time", height=500, legend_orientation="h")
+    fig.update_layout(
+        yaxis_title="EUR/MWh", xaxis_title="Time", height=500, legend_orientation="h"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
     meta = [f"{area}"]
     if len(actual) > 0:
-        meta.append(f"actual: {len(actual):,} pts ({actual.index.min()} → {actual.index.max()})")
+        meta.append(
+            f"actual: {len(actual):,} pts ({actual.index.min()} → {actual.index.max()})"
+        )
     if history is not None:
         meta.append(f"history preds: {len(history):,} pts")
     if forward is not None:
@@ -282,21 +348,25 @@ def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
     try:
         from tvDatafeed import Interval, TvDatafeed  # type: ignore
     except Exception as e:  # noqa: BLE001
-        raise RuntimeError("tvdatafeed is not available; install dependencies or upload a CSV.") from e
+        raise RuntimeError(
+            "tvdatafeed is not available; install dependencies or upload a CSV."
+        ) from e
 
     user = os.getenv("TV_USERNAME")
     pwd = os.getenv("TV_PASSWORD")
     tv = TvDatafeed(username=user, password=pwd) if user and pwd else TvDatafeed()
 
     symbols = {
-        "gas": ("TFM1!", "ICEEUR"),   # TTF front month, EUR/MWh
+        "gas": ("TFM1!", "ICEEUR"),  # TTF front month, EUR/MWh
         "coal": ("API2!", "ICEEUR"),  # API2 front, EUR/ton (proxy)
-        "co2": ("EUA1!", "ICEEUR"),   # EUA front, EUR/t
+        "co2": ("EUA1!", "ICEEUR"),  # EUA front, EUR/t
     }
 
     rows = []
     for name, (symbol, exchange) in symbols.items():
-        df = tv.get_hist(symbol=symbol, exchange=exchange, interval=Interval.in_daily, n_bars=900)
+        df = tv.get_hist(
+            symbol=symbol, exchange=exchange, interval=Interval.in_daily, n_bars=900
+        )
         if df is None or df.empty or "close" not in df.columns:
             continue
         s = df["close"].copy()
@@ -321,7 +391,9 @@ def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
 
 def commodities_tab():
     st.subheader("Commodity prices")
-    horizon = st.selectbox("Commodity horizon", options=["30d", "90d", "180d", "365d", "all"], index=1)
+    horizon = st.selectbox(
+        "Commodity horizon", options=["30d", "90d", "180d", "365d", "all"], index=1
+    )
 
     df = _load_market_commodities()
     if df.empty:
@@ -367,11 +439,25 @@ def commodities_tab():
             days = days or 365
             col1, col2, col3 = st.columns(3)
             with col1:
-                gas = st.number_input("Gas (EUR/MWh)", min_value=0.0, max_value=1000.0, value=30.0, step=1.0)
+                gas = st.number_input(
+                    "Gas (EUR/MWh)",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=30.0,
+                    step=1.0,
+                )
             with col2:
-                coal = st.number_input("Coal (EUR/MWh proxy)", min_value=0.0, max_value=1000.0, value=12.0, step=1.0)
+                coal = st.number_input(
+                    "Coal (EUR/MWh proxy)",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=12.0,
+                    step=1.0,
+                )
             with col3:
-                co2 = st.number_input("CO₂ (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=1.0)
+                co2 = st.number_input(
+                    "CO₂ (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=1.0
+                )
 
             end = pd.Timestamp.utcnow().floor("H")
             idx = pd.date_range(end=end, periods=days * 24, freq="H")
@@ -393,7 +479,9 @@ def commodities_tab():
         st.warning("Commodity file has no numeric columns to plot.")
         return
 
-    default_cols = [c for c in ["gas_price", "coal_price", "eua_price"] if c in numeric_cols] or numeric_cols[: min(3, len(numeric_cols))]
+    default_cols = [
+        c for c in ["gas_price", "coal_price", "eua_price"] if c in numeric_cols
+    ] or numeric_cols[: min(3, len(numeric_cols))]
     cols = st.multiselect("Series", options=numeric_cols, default=default_cols)
     if not cols:
         st.info("Select at least one series.")
@@ -408,7 +496,10 @@ def commodities_tab():
     latest = df[cols].dropna(how="all").tail(1)
     if not latest.empty:
         st.caption(f"Latest: {latest.index[0]}")
-        st.dataframe(latest.T.rename(columns={latest.index[0]: "value"}), use_container_width=True)
+        st.dataframe(
+            latest.T.rename(columns={latest.index[0]: "value"}),
+            use_container_width=True,
+        )
 
 
 @st.cache_data(show_spinner=False)
@@ -416,7 +507,9 @@ def load_all_plants() -> pd.DataFrame:
     """Download OPSD stack once (cached) so the UI stays responsive."""
     # Older deployments of PlantStack may not accept include_renewables; fall back gracefully.
     try:
-        stack = PlantStack.from_opsd(countries=None, min_capacity_mw=0, include_renewables=True)
+        stack = PlantStack.from_opsd(
+            countries=None, min_capacity_mw=0, include_renewables=True
+        )
     except TypeError:
         stack = PlantStack.from_opsd(countries=None, min_capacity_mw=0)
     df = stack.plants.copy()
@@ -426,7 +519,12 @@ def load_all_plants() -> pd.DataFrame:
     return df
 
 
-def _filter_plants(df: pd.DataFrame, min_capacity: float, include_chp: bool, bidding_zones: Tuple[str, ...]) -> pd.DataFrame:
+def _filter_plants(
+    df: pd.DataFrame,
+    min_capacity: float,
+    include_chp: bool,
+    bidding_zones: Tuple[str, ...],
+) -> pd.DataFrame:
     filtered = df.copy()
     if bidding_zones:
         filtered = filtered[filtered["bidding_zone"].isin(bidding_zones)]
@@ -436,17 +534,25 @@ def _filter_plants(df: pd.DataFrame, min_capacity: float, include_chp: bool, bid
     return filtered.reset_index(drop=True)
 
 
-def _attach_srmc(df: pd.DataFrame, co2_price_override: Optional[float] = None) -> pd.DataFrame:
+def _attach_srmc(
+    df: pd.DataFrame, co2_price_override: Optional[float] = None
+) -> pd.DataFrame:
     df = df.copy()
     eff = pd.to_numeric(df.get("efficiency"), errors="coerce")
-    fuel_price = pd.to_numeric(df.get("fuel_price_eur_per_mwhth"), errors="coerce").fillna(0.0)
-    vom = pd.to_numeric(df.get("variable_om_eur_per_mwh", df.get("vom")), errors="coerce").fillna(0.0)
+    fuel_price = pd.to_numeric(
+        df.get("fuel_price_eur_per_mwhth"), errors="coerce"
+    ).fillna(0.0)
+    vom = pd.to_numeric(
+        df.get("variable_om_eur_per_mwh", df.get("vom")), errors="coerce"
+    ).fillna(0.0)
     co2_int = pd.to_numeric(df.get("co2_intensity"), errors="coerce").fillna(0.0)
     co2_price = pd.to_numeric(df.get("co2_price_eur_per_t"), errors="coerce")
     if co2_price_override is not None:
         co2_price = float(co2_price_override)
     co2_price = co2_price.fillna(0.0) if isinstance(co2_price, pd.Series) else co2_price
-    srmc = fuel_price.div(eff.replace(0, pd.NA)).fillna(pd.NA) + co2_price * co2_int + vom
+    srmc = (
+        fuel_price.div(eff.replace(0, pd.NA)).fillna(pd.NA) + co2_price * co2_int + vom
+    )
     df["srmc_eur_per_mwh"] = srmc
     return df
 
@@ -455,28 +561,61 @@ def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
     filtered = df.copy()
     with st.expander("Filter table"):
         name_filter = st.text_input("Name contains", "")
-        fuel_opts = sorted(filtered["fuel"].dropna().unique().tolist()) if "fuel" in filtered else []
+        fuel_opts = (
+            sorted(filtered["fuel"].dropna().unique().tolist())
+            if "fuel" in filtered
+            else []
+        )
         fuel_sel = st.multiselect("Fuel", options=fuel_opts, default=fuel_opts)
-        stack_opts = sorted(filtered["stack_type"].dropna().unique().tolist()) if "stack_type" in filtered else []
+        stack_opts = (
+            sorted(filtered["stack_type"].dropna().unique().tolist())
+            if "stack_type" in filtered
+            else []
+        )
         stack_sel = st.multiselect("Stack type", options=stack_opts, default=stack_opts)
-        cap_min, cap_max = (float(filtered["capacity_mw"].min()), float(filtered["capacity_mw"].max())) if not filtered.empty else (0.0, 0.0)
-        cap_range = st.slider("Capacity range (MW)", min_value=cap_min, max_value=cap_max, value=(cap_min, cap_max))
-        if "srmc_eur_per_mwh" in filtered and filtered["srmc_eur_per_mwh"].dropna().size:
+        cap_min, cap_max = (
+            (float(filtered["capacity_mw"].min()), float(filtered["capacity_mw"].max()))
+            if not filtered.empty
+            else (0.0, 0.0)
+        )
+        cap_range = st.slider(
+            "Capacity range (MW)",
+            min_value=cap_min,
+            max_value=cap_max,
+            value=(cap_min, cap_max),
+        )
+        if (
+            "srmc_eur_per_mwh" in filtered
+            and filtered["srmc_eur_per_mwh"].dropna().size
+        ):
             srmc_min = float(filtered["srmc_eur_per_mwh"].min())
             srmc_max = float(filtered["srmc_eur_per_mwh"].max())
-            srmc_range = st.slider("SRMC range (EUR/MWh)", min_value=srmc_min, max_value=srmc_max, value=(srmc_min, srmc_max))
+            srmc_range = st.slider(
+                "SRMC range (EUR/MWh)",
+                min_value=srmc_min,
+                max_value=srmc_max,
+                value=(srmc_min, srmc_max),
+            )
         else:
             srmc_range = None
 
     if name_filter:
-        filtered = filtered[filtered["name"].str.contains(name_filter, case=False, na=False)]
+        filtered = filtered[
+            filtered["name"].str.contains(name_filter, case=False, na=False)
+        ]
     if fuel_sel:
         filtered = filtered[filtered["fuel"].isin(fuel_sel)]
     if stack_sel:
         filtered = filtered[filtered["stack_type"].isin(stack_sel)]
-    filtered = filtered[(filtered["capacity_mw"] >= cap_range[0]) & (filtered["capacity_mw"] <= cap_range[1])]
+    filtered = filtered[
+        (filtered["capacity_mw"] >= cap_range[0])
+        & (filtered["capacity_mw"] <= cap_range[1])
+    ]
     if srmc_range:
-        filtered = filtered[(filtered["srmc_eur_per_mwh"] >= srmc_range[0]) & (filtered["srmc_eur_per_mwh"] <= srmc_range[1])]
+        filtered = filtered[
+            (filtered["srmc_eur_per_mwh"] >= srmc_range[0])
+            & (filtered["srmc_eur_per_mwh"] <= srmc_range[1])
+        ]
     return filtered.reset_index(drop=True)
 
 
@@ -488,36 +627,59 @@ def plants_tab():
         st.error("No OPSD plants available. Check data/external cache.")
         return
     zone_options = sorted(all_plants["bidding_zone"].dropna().unique().tolist())
-    default_zones = [z for z in ("DE_LU", "FR") if z in zone_options] or zone_options[:1]
+    default_zones = [z for z in ("DE_LU", "FR") if z in zone_options] or zone_options[
+        :1
+    ]
     zones = st.multiselect("Bidding zones", options=zone_options, default=default_zones)
-    st.caption("Plants are mapped to bidding zones when available; otherwise we fall back to country code.")
-    min_cap = st.slider("Minimum capacity (MW)", min_value=0, max_value=1000, value=50, step=10)
+    st.caption(
+        "Plants are mapped to bidding zones when available; otherwise we fall back to country code."
+    )
+    min_cap = st.slider(
+        "Minimum capacity (MW)", min_value=0, max_value=1000, value=50, step=10
+    )
     include_chp = st.checkbox("Include CHP", value=True)
-    df = _filter_plants(all_plants, min_capacity=min_cap, include_chp=include_chp, bidding_zones=tuple(zones))
+    df = _filter_plants(
+        all_plants,
+        min_capacity=min_cap,
+        include_chp=include_chp,
+        bidding_zones=tuple(zones),
+    )
     if df.empty:
         st.info("No plants after filters.")
         return
 
-    co2_price_ui = st.number_input("CO₂ price (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=5.0)
+    co2_price_ui = st.number_input(
+        "CO₂ price (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=5.0
+    )
     df = _attach_srmc(df, co2_price_override=co2_price_ui)
     df = _apply_table_filters(df)
 
     total_cap = df["capacity_mw"].sum()
-    st.caption(f"{len(df)} plants | {total_cap:,.0f} MW total | bidding zones: {', '.join(zones)}")
+    st.caption(
+        f"{len(df)} plants | {total_cap:,.0f} MW total | bidding zones: {', '.join(zones)}"
+    )
 
     col1, col2 = st.columns(2)
     with col1:
         if "fuel" in df:
-            fuel_summary = df.groupby("fuel")["capacity_mw"].sum().sort_values(ascending=False)
+            fuel_summary = (
+                df.groupby("fuel")["capacity_mw"].sum().sort_values(ascending=False)
+            )
             st.write("Capacity by fuel (MW):")
             st.dataframe(fuel_summary.round(1))
     with col2:
         if "stack_type" in df:
-            type_summary = df.groupby("stack_type")["capacity_mw"].sum().sort_values(ascending=False)
+            type_summary = (
+                df.groupby("stack_type")["capacity_mw"]
+                .sum()
+                .sort_values(ascending=False)
+            )
             st.write("Capacity by stack type (MW):")
             st.dataframe(type_summary.round(1))
     st.write("Capacity by bidding zone (MW):")
-    zone_summary = df.groupby("bidding_zone")["capacity_mw"].sum().sort_values(ascending=False)
+    zone_summary = (
+        df.groupby("bidding_zone")["capacity_mw"].sum().sort_values(ascending=False)
+    )
     st.dataframe(zone_summary.round(1))
 
     map_df = df.dropna(subset=["lat", "lon"])
@@ -531,7 +693,12 @@ def plants_tab():
                 marker=dict(size=6, color="red", opacity=0.7),
             )
         )
-        fig.update_geos(fitbounds="locations", showcountries=True, lataxis_showgrid=True, lonaxis_showgrid=True)
+        fig.update_geos(
+            fitbounds="locations",
+            showcountries=True,
+            lataxis_showgrid=True,
+            lonaxis_showgrid=True,
+        )
         fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0))
         st.plotly_chart(fig, use_container_width=True)
 
@@ -569,30 +736,36 @@ def plants_tab():
         ]
         if c in df.columns
     ]
-    style = df[display_cols].style.format(
-        {
-            "srmc_eur_per_mwh": "{:.1f}",
-            "capacity_mw": "{:,.1f}",
-            "p_min_mw": "{:,.1f}",
-            "p_max_mw": "{:,.1f}",
-            "ramp_up_mw_per_min": "{:,.2f}",
-            "ramp_down_mw_per_min": "{:,.2f}",
-            "efficiency": "{:.2f}",
-            "co2_intensity": "{:.2f}",
-            "variable_om_eur_per_mwh": "{:.2f}",
-            "fuel_price_eur_per_mwhth": "{:.2f}",
-            "co2_price_eur_per_t": "{:.2f}",
-            "availability_factor": "{:.2f}",
-            "vom": "{:.2f}",
-        }
-    ).background_gradient(cmap="RdYlGn_r", subset=["srmc_eur_per_mwh"])
+    style = (
+        df[display_cols]
+        .style.format(
+            {
+                "srmc_eur_per_mwh": "{:.1f}",
+                "capacity_mw": "{:,.1f}",
+                "p_min_mw": "{:,.1f}",
+                "p_max_mw": "{:,.1f}",
+                "ramp_up_mw_per_min": "{:,.2f}",
+                "ramp_down_mw_per_min": "{:,.2f}",
+                "efficiency": "{:.2f}",
+                "co2_intensity": "{:.2f}",
+                "variable_om_eur_per_mwh": "{:.2f}",
+                "fuel_price_eur_per_mwhth": "{:.2f}",
+                "co2_price_eur_per_t": "{:.2f}",
+                "availability_factor": "{:.2f}",
+                "vom": "{:.2f}",
+            }
+        )
+        .background_gradient(cmap="RdYlGn_r", subset=["srmc_eur_per_mwh"])
+    )
     st.dataframe(style, use_container_width=True)
 
 
 def main():
     st.set_page_config(page_title="Power forecasts", layout="wide")
     st.title("Power forecasts dashboard")
-    tab1, tab2, tab3, tab4 = st.tabs(["Demand forecasts", "Price forecasts", "Commodity prices", "Plants (OPSD)"])
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Demand forecasts", "Price forecasts", "Commodity prices", "Plants (OPSD)"]
+    )
     with tab1:
         demand_tab()
     with tab2:
