@@ -259,6 +259,21 @@ def _filter_plants(df: pd.DataFrame, min_capacity: float, include_chp: bool, bid
     return filtered.reset_index(drop=True)
 
 
+def _attach_srmc(df: pd.DataFrame, co2_price_override: Optional[float] = None) -> pd.DataFrame:
+    df = df.copy()
+    eff = pd.to_numeric(df.get("efficiency"), errors="coerce")
+    fuel_price = pd.to_numeric(df.get("fuel_price_eur_per_mwhth"), errors="coerce").fillna(0.0)
+    vom = pd.to_numeric(df.get("variable_om_eur_per_mwh", df.get("vom")), errors="coerce").fillna(0.0)
+    co2_int = pd.to_numeric(df.get("co2_intensity"), errors="coerce").fillna(0.0)
+    co2_price = pd.to_numeric(df.get("co2_price_eur_per_t"), errors="coerce")
+    if co2_price_override is not None:
+        co2_price = float(co2_price_override)
+    co2_price = co2_price.fillna(0.0) if isinstance(co2_price, pd.Series) else co2_price
+    srmc = fuel_price.div(eff.replace(0, pd.NA)).fillna(pd.NA) + co2_price * co2_int + vom
+    df["srmc_eur_per_mwh"] = srmc
+    return df
+
+
 def plants_tab():
     st.subheader("Plant stack (OPSD conventional)")
     with st.spinner("Loading OPSD plant metadata..."):
@@ -276,6 +291,9 @@ def plants_tab():
     if df.empty:
         st.info("No plants after filters.")
         return
+
+    co2_price_ui = st.number_input("CO₂ price (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=5.0)
+    df = _attach_srmc(df, co2_price_override=co2_price_ui)
 
     total_cap = df["capacity_mw"].sum()
     st.caption(f"{len(df)} plants | {total_cap:,.0f} MW total | bidding zones: {', '.join(zones)}")
@@ -318,6 +336,7 @@ def plants_tab():
             "bidding_zone",
             "fuel",
             "stack_type",
+            "srmc_eur_per_mwh",
             "capacity_mw",
             "p_min_mw",
             "p_max_mw",
@@ -343,7 +362,24 @@ def plants_tab():
         ]
         if c in df.columns
     ]
-    st.dataframe(df[display_cols])
+    style = df[display_cols].style.format(
+        {
+            "srmc_eur_per_mwh": "{:.1f}",
+            "capacity_mw": "{:,.1f}",
+            "p_min_mw": "{:,.1f}",
+            "p_max_mw": "{:,.1f}",
+            "ramp_up_mw_per_min": "{:,.2f}",
+            "ramp_down_mw_per_min": "{:,.2f}",
+            "efficiency": "{:.2f}",
+            "co2_intensity": "{:.2f}",
+            "variable_om_eur_per_mwh": "{:.2f}",
+            "fuel_price_eur_per_mwhth": "{:.2f}",
+            "co2_price_eur_per_t": "{:.2f}",
+            "availability_factor": "{:.2f}",
+            "vom": "{:.2f}",
+        }
+    ).background_gradient(cmap="RdYlGn_r", subset=["srmc_eur_per_mwh"])
+    st.dataframe(style, use_container_width=True)
 
 
 def main():
