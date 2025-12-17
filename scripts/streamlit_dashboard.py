@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Unified Streamlit dashboard for demand and price forecasts."""
+import os
 from pathlib import Path
 from typing import Optional, Tuple, List
 import sys
@@ -16,6 +17,16 @@ from src.data.io import load_demand_series, load_tso_forecast_series, load_price
 from src.power_model.plants import PlantStack
 
 DATA_DIR = Path("data")
+
+
+def _load_secrets_into_env():
+    """Propagate Streamlit secrets to env vars so ingestion code can read tokens locally."""
+    token = st.secrets.get("ENTSOE_API_TOKEN") or st.secrets.get("ENTSOE_TOKEN")
+    if token and not os.getenv("ENTSOE_API_TOKEN"):
+        os.environ["ENTSOE_API_TOKEN"] = str(token)
+
+
+_load_secrets_into_env()
 
 
 @st.cache_data(show_spinner=False)
