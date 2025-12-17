@@ -28,7 +28,29 @@ class StructuralConfig:
         if self.blocks is None:
             self.blocks = DEFAULT_BLOCKS
         if self.default_fuel_prices is None:
-            self.default_fuel_prices = {"lignite": 3.0, "coal": 12.0, "gas": 30.0}
+            self.default_fuel_prices = {
+                "lignite": 3.0,
+                "coal": 12.0,
+                "gas": 30.0,
+                "oil": 60.0,
+                "nuclear": 8.0,
+                "biomass": 20.0,
+                "waste": 0.0,
+                "mixed_fossil": 20.0,
+            }
+        else:
+            fallback = {
+                "lignite": 3.0,
+                "coal": 12.0,
+                "gas": 30.0,
+                "oil": 60.0,
+                "nuclear": 8.0,
+                "biomass": 20.0,
+                "waste": 0.0,
+                "mixed_fossil": 20.0,
+            }
+            for fuel, price in fallback.items():
+                self.default_fuel_prices.setdefault(fuel, price)
 
 
 class StructuralStackModel:
@@ -125,17 +147,22 @@ class PlantStackModel(StructuralStackModel):
         self.plant_stack = plant_stack
 
     def _available_blocks(self, row: pd.Series) -> List[Dict]:
-        avail = float(row.get("availability_factor", 1.0))
+        system_avail = float(row.get("availability_factor", 1.0))
         blocks = []
         co2_price = float(row.get("eua_price", 0.0))
         for _, plant in self.plant_stack.plants.iterrows():
+            if plant.get("is_dispatchable", True) is False:
+                continue
             fuel_price = self._fuel_price(row, plant["fuel"])
-            srmc = fuel_price / plant["efficiency"] + co2_price * plant["co2_intensity"] + plant["vom"]
+            eff = float(plant["efficiency"]) if pd.notna(plant["efficiency"]) else 1.0
+            eff = eff if eff > 0 else 1.0
+            plant_avail = float(plant.get("availability_factor", 1.0) or 1.0)
+            srmc = fuel_price / eff + co2_price * float(plant["co2_intensity"]) + float(plant["vom"])
             blocks.append(
                 {
                     "name": plant["name"],
                     "fuel": plant["fuel"],
-                    "capacity": plant["capacity_mw"] * avail,
+                    "capacity": plant["capacity_mw"] * system_avail * plant_avail,
                     "marginal_cost": srmc,
                 }
             )

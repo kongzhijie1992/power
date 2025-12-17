@@ -218,33 +218,42 @@ def price_tab():
 
 
 @st.cache_data(show_spinner=False)
-def load_plants(min_capacity: float, include_chp: bool, countries: Tuple[str, ...]) -> pd.DataFrame:
-    """Load plant stack from OPSD and apply quick filters."""
-    stack = PlantStack.from_opsd(countries=countries if countries else None)
-    df = stack.plants.copy()
-    df = df[df["capacity_mw"] >= min_capacity]
-    if not include_chp and "is_chp" in df.columns:
-        df = df[~df["is_chp"]]
-    return df.reset_index(drop=True)
+def load_all_plants() -> pd.DataFrame:
+    """Download OPSD stack once (cached) so the UI stays responsive."""
+    stack = PlantStack.from_opsd(countries=None, min_capacity_mw=0, include_renewables=True)
+    return stack.plants.copy()
+
+
+def _filter_plants(df: pd.DataFrame, min_capacity: float, include_chp: bool, bidding_zones: Tuple[str, ...]) -> pd.DataFrame:
+    filtered = df.copy()
+    if bidding_zones:
+        filtered = filtered[filtered["bidding_zone"].isin(bidding_zones)]
+    filtered = filtered[filtered["capacity_mw"] >= min_capacity]
+    if not include_chp and "is_chp" in filtered.columns:
+        filtered = filtered[~filtered["is_chp"]]
+    return filtered.reset_index(drop=True)
 
 
 def plants_tab():
     st.subheader("Plant stack (OPSD conventional)")
-    # build list of available countries from OPSD metadata
-    stack_all = PlantStack.from_opsd(countries=None, min_capacity_mw=0)
-    country_options = sorted(stack_all.plants["country"].dropna().unique().tolist())
-    default_countries = [c for c in ("DE", "LU") if c in country_options] or country_options[:1]
-    countries = st.multiselect("Countries", options=country_options, default=default_countries)
-    st.caption("OPSD data is country-level (e.g., DK covers DK1+DK2; NO covers NO1–NO5).")
+    with st.spinner("Loading OPSD plant metadata..."):
+        all_plants = load_all_plants()
+    if all_plants.empty:
+        st.error("No OPSD plants available. Check data/external cache.")
+        return
+    zone_options = sorted(all_plants["bidding_zone"].dropna().unique().tolist())
+    default_zones = [z for z in ("DE_LU", "FR") if z in zone_options] or zone_options[:1]
+    zones = st.multiselect("Bidding zones", options=zone_options, default=default_zones)
+    st.caption("Plants are mapped to bidding zones when available; otherwise we fall back to country code.")
     min_cap = st.slider("Minimum capacity (MW)", min_value=0, max_value=1000, value=50, step=10)
     include_chp = st.checkbox("Include CHP", value=True)
-    df = load_plants(min_capacity=min_cap, include_chp=include_chp, countries=tuple(countries))
+    df = _filter_plants(all_plants, min_capacity=min_cap, include_chp=include_chp, bidding_zones=tuple(zones))
     if df.empty:
         st.info("No plants after filters.")
         return
 
     total_cap = df["capacity_mw"].sum()
-    st.caption(f"{len(df)} plants | {total_cap:,.0f} MW total | countries: {', '.join(countries)}")
+    st.caption(f"{len(df)} plants | {total_cap:,.0f} MW total | bidding zones: {', '.join(zones)}")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -257,6 +266,9 @@ def plants_tab():
             type_summary = df.groupby("stack_type")["capacity_mw"].sum().sort_values(ascending=False)
             st.write("Capacity by stack type (MW):")
             st.dataframe(type_summary.round(1))
+    st.write("Capacity by bidding zone (MW):")
+    zone_summary = df.groupby("bidding_zone")["capacity_mw"].sum().sort_values(ascending=False)
+    st.dataframe(zone_summary.round(1))
 
     map_df = df.dropna(subset=["lat", "lon"])
     if not map_df.empty:
@@ -278,16 +290,31 @@ def plants_tab():
         c
         for c in [
             "name",
-            "country",
+            "bidding_zone",
             "fuel",
             "stack_type",
             "capacity_mw",
+            "p_min_mw",
+            "p_max_mw",
+            "ramp_up_mw_per_min",
+            "ramp_down_mw_per_min",
+            "min_up_hours",
+            "min_down_hours",
+            "startup_cost_eur",
             "efficiency",
+            "heat_rate_mwh_th_per_mwh_el",
             "co2_intensity",
+            "variable_om_eur_per_mwh",
+            "fuel_price_eur_per_mwhth",
+            "co2_price_eur_per_t",
+            "availability_factor",
             "vom",
             "is_chp",
             "commissioned_year",
             "eic_code",
+            "technology",
+            "lat",
+            "lon",
         ]
         if c in df.columns
     ]
