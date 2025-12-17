@@ -22,15 +22,24 @@ MARKET_DIR = Path("data/market")
 
 def _load_secrets_into_env():
     """Propagate Streamlit secrets to env vars so ingestion code can read tokens locally."""
-    # Prefer an already-set env var; only read secrets if needed.
-    if os.getenv("ENTSOE_API_TOKEN"):
+    needs_entsoe = not os.getenv("ENTSOE_API_TOKEN")
+    needs_tv = (not os.getenv("TV_USERNAME")) or (not os.getenv("TV_PASSWORD"))
+    if not needs_entsoe and not needs_tv:
         return
     try:
         token = st.secrets.get("ENTSOE_API_TOKEN") or st.secrets.get("ENTSOE_TOKEN")
+        tv_user = st.secrets.get("TV_USERNAME")
+        tv_pwd = st.secrets.get("TV_PASSWORD")
     except Exception:
         token = None
-    if token:
+        tv_user = None
+        tv_pwd = None
+    if needs_entsoe and token:
         os.environ["ENTSOE_API_TOKEN"] = str(token)
+    if needs_tv and tv_user and not os.getenv("TV_USERNAME"):
+        os.environ["TV_USERNAME"] = str(tv_user)
+    if needs_tv and tv_pwd and not os.getenv("TV_PASSWORD"):
+        os.environ["TV_PASSWORD"] = str(tv_pwd)
 
 
 _load_secrets_into_env()
@@ -264,17 +273,119 @@ def _load_market_commodities() -> pd.DataFrame:
     return pd.DataFrame()
 
 
+@st.cache_data(show_spinner=False)
+def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
+    """
+    Fetch commodity proxies from TradingView via tvdatafeed (daily), then resample to hourly.
+    Returns a DataFrame indexed by datetime with columns gas, coal, co2 and normalized gas_price/coal_price/eua_price.
+    """
+    try:
+        from tvDatafeed import Interval, TvDatafeed  # type: ignore
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError("tvdatafeed is not available; install dependencies or upload a CSV.") from e
+
+    user = os.getenv("TV_USERNAME")
+    pwd = os.getenv("TV_PASSWORD")
+    tv = TvDatafeed(username=user, password=pwd) if user and pwd else TvDatafeed()
+
+    symbols = {
+        "gas": ("TFM1!", "ICEEUR"),   # TTF front month, EUR/MWh
+        "coal": ("API2!", "ICEEUR"),  # API2 front, EUR/ton (proxy)
+        "co2": ("EUA1!", "ICEEUR"),   # EUA front, EUR/t
+    }
+
+    rows = []
+    for name, (symbol, exchange) in symbols.items():
+        df = tv.get_hist(symbol=symbol, exchange=exchange, interval=Interval.in_daily, n_bars=900)
+        if df is None or df.empty or "close" not in df.columns:
+            continue
+        s = df["close"].copy()
+        s.name = name
+        rows.append(s)
+
+    if not rows:
+        return pd.DataFrame()
+
+    out = pd.concat(rows, axis=1).sort_index().ffill()
+    out = out.resample("1H").ffill()
+    out.index = pd.to_datetime(out.index)
+    if isinstance(out.index, pd.DatetimeIndex) and out.index.tz is not None:
+        out.index = out.index.tz_convert("UTC").tz_localize(None)
+
+    rename = {"co2": "eua_price", "gas": "gas_price", "coal": "coal_price"}
+    for src, dst in rename.items():
+        if src in out.columns and dst not in out.columns:
+            out[dst] = out[src]
+    return out
+
+
 def commodities_tab():
     st.subheader("Commodity prices")
     horizon = st.selectbox("Commodity horizon", options=["30d", "90d", "180d", "365d", "all"], index=1)
 
     df = _load_market_commodities()
     if df.empty:
-        st.info(
-            "No commodity file found. Add `data/market/commodities.csv` (columns: datetime, gas, coal, co2) "
-            "or run `python scripts/fetch_tradingview.py` to generate it."
-        )
-        return
+        st.info("No commodity file found yet.")
+        uploaded = st.file_uploader("Upload `commodities.csv`", type=["csv"])
+        if uploaded is not None:
+            df = pd.read_csv(uploaded)
+            if "datetime" in df.columns:
+                df["datetime"] = pd.to_datetime(df["datetime"])
+                df = df.set_index("datetime")
+            df.index = pd.to_datetime(df.index)
+            df = df.sort_index()
+
+            rename = {"co2": "eua_price", "gas": "gas_price", "coal": "coal_price"}
+            for src, dst in rename.items():
+                if src in df.columns and dst not in df.columns:
+                    df[dst] = df[src]
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Fetch via TradingView"):
+                with st.spinner("Fetching commodity proxies..."):
+                    try:
+                        df = _fetch_market_commodities_from_tradingview()
+                    except Exception as e:  # noqa: BLE001
+                        st.error(str(e))
+                        df = pd.DataFrame()
+
+        with col_b:
+            if not df.empty and st.button("Save to `data/market/commodities.csv`"):
+                MARKET_DIR.mkdir(parents=True, exist_ok=True)
+                out = df.copy()
+                out = out.reset_index().rename(columns={"index": "datetime"})
+                out.to_csv(MARKET_DIR / "commodities.csv", index=False)
+                st.success("Saved `data/market/commodities.csv`.")
+
+        if df.empty:
+            st.caption(
+                "You can also enter manual values (flat time series) for local testing, or generate a file with "
+                "`python scripts/fetch_tradingview.py`."
+            )
+            days = None if horizon == "all" else int(str(horizon).rstrip("d"))
+            days = days or 365
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                gas = st.number_input("Gas (EUR/MWh)", min_value=0.0, max_value=1000.0, value=30.0, step=1.0)
+            with col2:
+                coal = st.number_input("Coal (EUR/MWh proxy)", min_value=0.0, max_value=1000.0, value=12.0, step=1.0)
+            with col3:
+                co2 = st.number_input("CO₂ (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=1.0)
+
+            end = pd.Timestamp.utcnow().floor("H")
+            idx = pd.date_range(end=end, periods=days * 24, freq="H")
+            df = pd.DataFrame(
+                {
+                    "gas": gas,
+                    "coal": coal,
+                    "co2": co2,
+                    "gas_price": gas,
+                    "coal_price": coal,
+                    "eua_price": co2,
+                },
+                index=idx,
+            )
 
     df = _apply_horizon(df, horizon)
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
