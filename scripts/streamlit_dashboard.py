@@ -432,46 +432,10 @@ def commodities_tab():
 
         if df.empty:
             st.caption(
-                "You can also enter manual values (flat time series) for local testing, or generate a file with "
-                "`python scripts/fetch_tradingview.py`."
+                "Expected columns: `datetime, gas, coal, co2` (optionally `gas_price, coal_price, eua_price`). "
+                "To generate locally: `python scripts/fetch_tradingview.py`."
             )
-            days = None if horizon == "all" else int(str(horizon).rstrip("d"))
-            days = days or 365
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                gas = st.number_input(
-                    "Gas (EUR/MWh)",
-                    min_value=0.0,
-                    max_value=1000.0,
-                    value=30.0,
-                    step=1.0,
-                )
-            with col2:
-                coal = st.number_input(
-                    "Coal (EUR/MWh proxy)",
-                    min_value=0.0,
-                    max_value=1000.0,
-                    value=12.0,
-                    step=1.0,
-                )
-            with col3:
-                co2 = st.number_input(
-                    "CO₂ (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=1.0
-                )
-
-            end = pd.Timestamp.utcnow().floor("H")
-            idx = pd.date_range(end=end, periods=days * 24, freq="H")
-            df = pd.DataFrame(
-                {
-                    "gas": gas,
-                    "coal": coal,
-                    "co2": co2,
-                    "gas_price": gas,
-                    "coal_price": coal,
-                    "eua_price": co2,
-                },
-                index=idx,
-            )
+            return
 
     df = _apply_horizon(df, horizon)
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
