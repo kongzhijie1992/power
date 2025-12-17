@@ -147,7 +147,8 @@ class PlantStackModel(StructuralStackModel):
         self.plant_stack = plant_stack
 
     def _available_blocks(self, row: pd.Series) -> List[Dict]:
-        system_avail = float(row.get("availability_factor", 1.0))
+        sys_avail_raw = row.get("availability_factor", 1.0)
+        system_avail = float(sys_avail_raw) if pd.notna(sys_avail_raw) else 1.0
         blocks = []
         co2_price = float(row.get("eua_price", 0.0))
         for _, plant in self.plant_stack.plants.iterrows():
@@ -156,7 +157,8 @@ class PlantStackModel(StructuralStackModel):
             fuel_price = self._fuel_price(row, plant["fuel"])
             eff = float(plant["efficiency"]) if pd.notna(plant["efficiency"]) else 1.0
             eff = eff if eff > 0 else 1.0
-            plant_avail = float(plant.get("availability_factor", 1.0) or 1.0)
+            plant_avail_raw = plant.get("availability_factor", 1.0)
+            plant_avail = float(plant_avail_raw) if pd.notna(plant_avail_raw) else 1.0
             srmc = fuel_price / eff + co2_price * float(plant["co2_intensity"]) + float(plant["vom"])
             blocks.append(
                 {
