@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unified Streamlit dashboard for demand and price forecasts."""
 import os
+import subprocess
 from pathlib import Path
 from typing import Optional, Tuple, List
 import sys
@@ -43,6 +44,33 @@ def _load_secrets_into_env():
 
 
 _load_secrets_into_env()
+
+
+def _is_git_lfs_pointer(path: Path) -> bool:
+    try:
+        with path.open("rb") as f:
+            head = f.read(200)
+        text = head.decode("utf-8", errors="ignore")
+        return "git-lfs.github.com/spec/v1" in text
+    except Exception:
+        return False
+
+
+def _try_git_lfs_pull(include_path: str) -> tuple[bool, str]:
+    try:
+        proc = subprocess.run(
+            ["git", "lfs", "pull", "--include", include_path],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if proc.returncode != 0:
+            return False, out.strip() or f"git lfs pull failed (code={proc.returncode})"
+        return True, out.strip() or "git lfs pull succeeded"
+    except Exception as e:  # noqa: BLE001
+        return False, str(e)
 
 
 @st.cache_data(show_spinner=False)
@@ -319,6 +347,8 @@ def _load_market_commodities() -> pd.DataFrame:
     for path in candidates:
         if not path.exists():
             continue
+        if _is_git_lfs_pointer(path):
+            continue
         if path.suffix.lower() == ".parquet":
             df = pd.read_parquet(path)
         else:
@@ -394,6 +424,25 @@ def commodities_tab():
     horizon = st.selectbox(
         "Commodity horizon", options=["30d", "90d", "180d", "365d", "all"], index=1
     )
+
+    lfs_candidate = None
+    for p in [MARKET_DIR / "commodities.parquet", MARKET_DIR / "commodities.csv"]:
+        if p.exists() and _is_git_lfs_pointer(p):
+            lfs_candidate = p
+            break
+    if lfs_candidate is not None:
+        st.error(
+            f"`{lfs_candidate.as_posix()}` is a Git LFS pointer file (the real data was not pulled). "
+            "Enable Git LFS on the Streamlit server (or run `git lfs pull`)."
+        )
+        if st.button("Try `git lfs pull` now"):
+            ok, msg = _try_git_lfs_pull(str(lfs_candidate.as_posix()))
+            if ok:
+                st.success(msg)
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(msg)
 
     df = _load_market_commodities()
     if df.empty:
