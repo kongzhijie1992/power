@@ -51,14 +51,23 @@ def _train_direct_model(area: str, days: int, weather_path: str):
     """Fallback: direct demand model without TSO forecast baseline."""
     load_series = load_demand_series(area).sort_index()
     load_series = _limit_by_days(load_series, days)
-    logger.info("Loaded demand (direct): %d rows, %s → %s", len(load_series), load_series.index.min(), load_series.index.max())
+    logger.info(
+        "Loaded demand (direct): %d rows, %s → %s",
+        len(load_series),
+        load_series.index.min(),
+        load_series.index.max(),
+    )
 
-    weather_df = add_gfs_features(load_series.index, lat=0, lon=0, weather_csv=weather_path)
+    weather_df = add_gfs_features(
+        load_series.index, lat=0, lon=0, weather_csv=weather_path
+    )
     X, y = prepare_demand_features(load_series, weather_df)
     mean_model, q_models, stats = train_demand_models(X, y)
     logger.info("[direct] Demand model stats: %s", stats)
 
-    future_index = pd.date_range(load_series.index.max() + pd.Timedelta(hours=1), periods=24 * 2, freq="h")
+    future_index = pd.date_range(
+        load_series.index.max() + pd.Timedelta(hours=1), periods=24 * 2, freq="h"
+    )
     combined_index = load_series.index.append(future_index)
     # Avoid backfilling with future values; fill missing with 0 as a neutral fallback.
     combined_weather = weather_df.reindex(combined_index).ffill().fillna(0)
@@ -84,29 +93,43 @@ def _train_direct_model(area: str, days: int, weather_path: str):
 def main(area: str, days: int = 180):
     cfg = load_config()
     paths = cfg.get("paths", {})
-    weather_path = paths.get("weather_template", "data/weather/{area}_weather.csv").format(area=area)
+    weather_path = paths.get(
+        "weather_template", "data/weather/{area}_weather.csv"
+    ).format(area=area)
 
     # Attempt bias-correction with TSO baseline
     try:
         tso_forecast = load_tso_forecast_series(area).sort_index()
     except FileNotFoundError:
-        logger.warning("No TSO forecast found for %s; falling back to direct model", area)
+        logger.warning(
+            "No TSO forecast found for %s; falling back to direct model", area
+        )
         tso_forecast = None
 
     if tso_forecast is None or tso_forecast.empty:
-        forecasts, stats, weather_df, load_series = _train_direct_model(area, days, weather_path)
+        forecasts, stats, weather_df, load_series = _train_direct_model(
+            area, days, weather_path
+        )
     else:
         actual_load = load_demand_series(area).sort_index()
         aligned = pd.concat(
-            [actual_load.rename("actual"), tso_forecast.rename("forecast")], axis=1, join="inner"
+            [actual_load.rename("actual"), tso_forecast.rename("forecast")],
+            axis=1,
+            join="inner",
         ).dropna()
         aligned = _limit_by_days(aligned, days)
         if aligned.empty:
-            logger.warning("Aligned load+forecast empty for %s; falling back to direct model", area)
-            forecasts, stats, weather_df, load_series = _train_direct_model(area, days, weather_path)
+            logger.warning(
+                "Aligned load+forecast empty for %s; falling back to direct model", area
+            )
+            forecasts, stats, weather_df, load_series = _train_direct_model(
+                area, days, weather_path
+            )
         else:
             # train on historical errors
-            weather_df = add_gfs_features(tso_forecast.index, lat=0, lon=0, weather_csv=weather_path)
+            weather_df = add_gfs_features(
+                tso_forecast.index, lat=0, lon=0, weather_csv=weather_path
+            )
             # crude country code from area (first 2 letters)
             country_code = area.split("_")[0][:2] if area else None
             X, y, error_series = prepare_error_features(

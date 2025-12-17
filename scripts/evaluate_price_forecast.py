@@ -46,14 +46,39 @@ def _load_price_series(area: str, days: int | None = None) -> pd.Series:
     return series
 
 
-def _forecast_func(history: pd.Series, days: int, weather: Optional[pd.DataFrame], country: Optional[str], params: dict) -> pd.Series:
+def _forecast_func(
+    history: pd.Series,
+    days: int,
+    weather: Optional[pd.DataFrame],
+    country: Optional[str],
+    params: dict,
+) -> pd.Series:
     """Train + forecast using LightGBM with lags/seasonality (no look-ahead)."""
-    return forecast_price(history, weather=weather, country=country, horizon_days=days, params=params)
+    return forecast_price(
+        history, weather=weather, country=country, horizon_days=days, params=params
+    )
 
 
-def evaluate_area(area: str, days: int | None, horizon: int, train_window: int, weather_path: Optional[str], save_forecast: bool = True, params: Optional[dict] = None, history_step_hours: int = 24, enable_history: bool = True, backtest_windows: int = 10) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def evaluate_area(
+    area: str,
+    days: int | None,
+    horizon: int,
+    train_window: int,
+    weather_path: Optional[str],
+    save_forecast: bool = True,
+    params: Optional[dict] = None,
+    history_step_hours: int = 24,
+    enable_history: bool = True,
+    backtest_windows: int = 10,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     prices = _load_price_series(area, days=days)
-    logger.info("%s: loaded %d points (%s -> %s)", area, len(prices), prices.index.min(), prices.index.max())
+    logger.info(
+        "%s: loaded %d points (%s -> %s)",
+        area,
+        len(prices),
+        prices.index.min(),
+        prices.index.max(),
+    )
     weather_df = None
     if weather_path:
         path = Path(weather_path.format(area=area))
@@ -67,24 +92,40 @@ def evaluate_area(area: str, days: int | None, horizon: int, train_window: int, 
         ref = idx.max() - pd.Timedelta(days=i)
         train_start = ref - pd.Timedelta(days=train_window)
         train = prices[(prices.index > train_start) & (prices.index <= ref)]
-        truth = prices[(prices.index > ref) & (prices.index <= ref + pd.Timedelta(days=horizon))]
+        truth = prices[
+            (prices.index > ref) & (prices.index <= ref + pd.Timedelta(days=horizon))
+        ]
         if len(train) < 24 or truth.empty:
             continue
-        preds = _forecast_func(train, horizon, weather_df, area.split("_")[0][:2] if area else None, params or {})
+        preds = _forecast_func(
+            train,
+            horizon,
+            weather_df,
+            area.split("_")[0][:2] if area else None,
+            params or {},
+        )
         rmse = simple_rmse(truth, preds)
         bt_rows.append({"ref": ref, "rmse": rmse})
     bt = pd.DataFrame(bt_rows)
     if bt.empty:
         logger.warning("%s: backtest produced no windows", area)
     else:
-        logger.info("%s: backtest windows=%d mean RMSE=%.2f", area, len(bt), bt["rmse"].mean())
+        logger.info(
+            "%s: backtest windows=%d mean RMSE=%.2f", area, len(bt), bt["rmse"].mean()
+        )
 
     # full-history forward-only predictions (no look-ahead)
     hist_preds = pd.DataFrame()
     if enable_history:
         hist_preds = walk_forward_predict_series(
             prices,
-            lambda s, days=horizon: _forecast_func(s, days, weather_df, area.split("_")[0][:2] if area else None, params or {}),
+            lambda s, days=horizon: _forecast_func(
+                s,
+                days,
+                weather_df,
+                area.split("_")[0][:2] if area else None,
+                params or {},
+            ),
             train_window_days=train_window,
             horizon_days=horizon,
             step_hours=history_step_hours,
@@ -93,7 +134,12 @@ def evaluate_area(area: str, days: int | None, horizon: int, train_window: int, 
             logger.warning("%s: history predictions empty (not enough data)", area)
         else:
             hist_rmse = (hist_preds["pred"] - hist_preds["actual"]).pow(2).mean() ** 0.5
-            logger.info("%s: history predictions points=%d RMSE=%.2f", area, len(hist_preds), hist_rmse)
+            logger.info(
+                "%s: history predictions points=%d RMSE=%.2f",
+                area,
+                len(hist_preds),
+                hist_rmse,
+            )
             if save_forecast:
                 hist_out = DATA_DIR / area / "price_history_predictions.csv"
                 hist_out.parent.mkdir(parents=True, exist_ok=True)
@@ -101,7 +147,13 @@ def evaluate_area(area: str, days: int | None, horizon: int, train_window: int, 
                 logger.info("%s: saved history predictions -> %s", area, hist_out)
 
     # forward forecast for dashboarding
-    fc = _forecast_func(prices, days=horizon, weather=weather_df, country=area.split("_")[0][:2] if area else None, params=params or {})
+    fc = _forecast_func(
+        prices,
+        days=horizon,
+        weather=weather_df,
+        country=area.split("_")[0][:2] if area else None,
+        params=params or {},
+    )
     fc_df = pd.DataFrame({"mean": fc})
     fc_df["q10"] = fc_df["mean"] * 0.9
     fc_df["q90"] = fc_df["mean"] * 1.1
@@ -156,15 +208,44 @@ def main(
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--area", help="Single area code (e.g., DE_LU)")
-    p.add_argument("--areas", nargs="+", help="List of areas to evaluate (overrides --area)")
-    p.add_argument("--days", type=int, default=None, help="Limit to trailing N days of history")
+    p.add_argument(
+        "--areas", nargs="+", help="List of areas to evaluate (overrides --area)"
+    )
+    p.add_argument(
+        "--days", type=int, default=None, help="Limit to trailing N days of history"
+    )
     p.add_argument("--horizon", type=int, default=7, help="Forecast horizon in days")
-    p.add_argument("--train-window", type=int, default=120, help="Training window in days for walk-forward")
-    p.add_argument("--no-save", action="store_true", help="Do not persist price_forecast.csv")
-    p.add_argument("--weather-template", default="data/weather/{area}_weather.csv", help="Template for weather CSV path")
-    p.add_argument("--history-step-hours", type=int, default=24, help="Stride in hours for history predictions to speed up")
-    p.add_argument("--skip-history", action="store_true", help="Skip full history predictions (faster)")
-    p.add_argument("--backtest-windows", type=int, default=10, help="Number of walk-forward windows for quick backtest")
+    p.add_argument(
+        "--train-window",
+        type=int,
+        default=120,
+        help="Training window in days for walk-forward",
+    )
+    p.add_argument(
+        "--no-save", action="store_true", help="Do not persist price_forecast.csv"
+    )
+    p.add_argument(
+        "--weather-template",
+        default="data/weather/{area}_weather.csv",
+        help="Template for weather CSV path",
+    )
+    p.add_argument(
+        "--history-step-hours",
+        type=int,
+        default=24,
+        help="Stride in hours for history predictions to speed up",
+    )
+    p.add_argument(
+        "--skip-history",
+        action="store_true",
+        help="Skip full history predictions (faster)",
+    )
+    p.add_argument(
+        "--backtest-windows",
+        type=int,
+        default=10,
+        help="Number of walk-forward windows for quick backtest",
+    )
     args = p.parse_args()
     areas = args.areas if args.areas else ([args.area] if args.area else [])
     if not areas:

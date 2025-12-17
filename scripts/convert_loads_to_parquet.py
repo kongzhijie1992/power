@@ -9,9 +9,39 @@ from pathlib import Path
 import pandas as pd
 
 AREAS = [
-    "DE_LU", "FR", "IT", "ES", "NL", "BE", "PT", "CH", "AT", "PL", "CZ", "SK",
-    "HU", "RO", "BG", "SI", "HR", "GR", "DK1", "DK2", "FI", "SE1", "SE2", "SE3",
-    "SE4", "NO1", "NO2", "NO3", "NO4", "NO5", "LT", "LV", "EE"
+    "DE_LU",
+    "FR",
+    "IT",
+    "ES",
+    "NL",
+    "BE",
+    "PT",
+    "CH",
+    "AT",
+    "PL",
+    "CZ",
+    "SK",
+    "HU",
+    "RO",
+    "BG",
+    "SI",
+    "HR",
+    "GR",
+    "DK1",
+    "DK2",
+    "FI",
+    "SE1",
+    "SE2",
+    "SE3",
+    "SE4",
+    "NO1",
+    "NO2",
+    "NO3",
+    "NO4",
+    "NO5",
+    "LT",
+    "LV",
+    "EE",
 ]
 
 

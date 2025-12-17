@@ -1,4 +1,5 @@
 """Backtesting utilities for forecasts and simple metrics."""
+
 import pandas as pd
 import numpy as np
 from sklearn.metrics import mean_squared_error
@@ -22,21 +23,25 @@ def simple_rmse(true: pd.Series, pred: pd.Series) -> float:
     return float(np.sqrt(mean_squared_error(df.iloc[:, 0], df.iloc[:, 1])))
 
 
-def walk_forward_backtest(series: pd.Series, forecast_func, train_window_days: int = 60, horizon_days: int = 7):
+def walk_forward_backtest(
+    series: pd.Series, forecast_func, train_window_days: int = 60, horizon_days: int = 7
+):
     results = []
-    freq = 'D'
+    freq = "D"
     end = series.index.max()
     # generate rolling windows ending each day in last 30 days
     for i in range(30, 0, -1):
         ref = end - pd.Timedelta(days=i)
         train_start = ref - pd.Timedelta(days=train_window_days)
         train = series[train_start:ref]
-        truth = series[ref + pd.Timedelta(hours=1): ref + pd.Timedelta(days=horizon_days)]
+        truth = series[
+            ref + pd.Timedelta(hours=1) : ref + pd.Timedelta(days=horizon_days)
+        ]
         if len(train) < 24:
             continue
         pred = forecast_func(train, days=horizon_days)
         rmse = simple_rmse(truth, pred)
-        results.append({'ref': ref, 'rmse': rmse})
+        results.append({"ref": ref, "rmse": rmse})
     return pd.DataFrame(results)
 
 
@@ -89,6 +94,8 @@ def walk_forward_predict_series(
     if not preds:
         return pd.DataFrame(columns=["pred", "actual", "train_end"])
 
-    df = pd.DataFrame.from_dict(preds, orient="index", columns=["pred", "train_end"]).sort_index()
+    df = pd.DataFrame.from_dict(
+        preds, orient="index", columns=["pred", "train_end"]
+    ).sort_index()
     df["actual"] = series.reindex(df.index)
     return df[["pred", "actual", "train_end"]]

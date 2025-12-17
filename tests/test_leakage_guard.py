@@ -32,6 +32,8 @@ def test_rolling_cv_uses_past_only(monkeypatch):
     monkeypatch.setattr(TimeSeriesSplit, "split", checked_split)
 
     model = ResidualModel(feature_cols=["f1", "f2"])
-    mae = model.rolling_cv_mae(df, n_splits=3, target_col="price_da", structural_col="structural_price")
+    mae = model.rolling_cv_mae(
+        df, n_splits=3, target_col="price_da", structural_col="structural_price"
+    )
     assert checks  # at least one split inspected
     assert mae >= 0

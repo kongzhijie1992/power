@@ -5,7 +5,8 @@ POWER PROJECT QUICK REFERENCE CARD
 Status: ✅ PRODUCTION-READY (87/87 tests passing)
 """
 
-print("""
+print(
+    """
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║                     POWER PROJECT - QUICK REFERENCE                       ║
 ╚════════════════════════════════════════════════════════════════════════════╝
@@ -102,4 +103,5 @@ Last Updated: 2025-12-13
 Python Version: 3.13.5
 Test Framework: pytest 9.0.2
 ════════════════════════════════════════════════════════════════════════════════
-""")
+"""
+)

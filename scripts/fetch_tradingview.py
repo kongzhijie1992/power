@@ -31,8 +31,8 @@ OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # Default symbols (can be tweaked per desk preference)
 SYMBOLS = {
-    "gas": ("TFM1!", "ICEEUR"),   # TTF front month, EUR/MWh
-    "co2": ("EUA1!", "ICEEUR"),   # EUA front, EUR/t
+    "gas": ("TFM1!", "ICEEUR"),  # TTF front month, EUR/MWh
+    "co2": ("EUA1!", "ICEEUR"),  # EUA front, EUR/t
     "coal": ("API2!", "ICEEUR"),  # API2 front, EUR/ton
 }
 
@@ -79,10 +79,7 @@ def main():
 
     df = pd.concat(rows, axis=1).sort_index().ffill()
     out = (
-        df.resample("1H")
-        .ffill()
-        .reset_index()
-        .rename(columns={"datetime": "datetime"})
+        df.resample("1H").ffill().reset_index().rename(columns={"datetime": "datetime"})
     )
     out.to_csv(OUT_PATH, index=False)
     log.info("Saved %s (rows=%d)", OUT_PATH, len(out))

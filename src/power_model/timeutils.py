@@ -42,7 +42,9 @@ def add_local_time_features(
     if utc.tz is None:
         raise ValueError("index must be tz-aware UTC before adding local features")
     local = utc.tz_convert(tz)
-    dst_offset = local.map(lambda ts: (ts.utcoffset() or timedelta(0)).total_seconds() / 3600)
+    dst_offset = local.map(
+        lambda ts: (ts.utcoffset() or timedelta(0)).total_seconds() / 3600
+    )
     out = df.copy()
     out[f"{prefix}_hour_local"] = local.hour
     out[f"{prefix}_dow"] = local.dayofweek

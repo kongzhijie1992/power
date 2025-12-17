@@ -9,10 +9,41 @@ from pathlib import Path
 import pandas as pd
 
 AREAS = [
-    "DE_LU", "FR", "IT", "ES", "NL", "BE", "PT", "CH", "AT", "PL", "CZ", "SK",
-    "HU", "RO", "BG", "SI", "HR", "GR", "DK1", "DK2", "FI", "SE1", "SE2", "SE3",
-    "SE4", "NO1", "NO2", "NO3", "NO4", "NO5", "LT", "LV", "EE"
+    "DE_LU",
+    "FR",
+    "IT",
+    "ES",
+    "NL",
+    "BE",
+    "PT",
+    "CH",
+    "AT",
+    "PL",
+    "CZ",
+    "SK",
+    "HU",
+    "RO",
+    "BG",
+    "SI",
+    "HR",
+    "GR",
+    "DK1",
+    "DK2",
+    "FI",
+    "SE1",
+    "SE2",
+    "SE3",
+    "SE4",
+    "NO1",
+    "NO2",
+    "NO3",
+    "NO4",
+    "NO5",
+    "LT",
+    "LV",
+    "EE",
 ]
+
 
 def summarize_area(area: str):
     price_path = Path(f"data/{area}/day_ahead_real.csv")
@@ -52,7 +83,15 @@ def summarize_area(area: str):
             lf.isna().sum().sum(),
         )
 
-    return area, price_info, weather_info, load_info, price_path, weather_path, load_path
+    return (
+        area,
+        price_info,
+        weather_info,
+        load_info,
+        price_path,
+        weather_path,
+        load_path,
+    )
 
 
 def main():

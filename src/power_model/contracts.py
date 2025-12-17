@@ -26,14 +26,20 @@ def validate_contract(df: pd.DataFrame, contract: TimeSeriesContract) -> pd.Data
     if not isinstance(df.index, pd.DatetimeIndex):
         raise ValueError(f"{contract.name}: index must be DatetimeIndex")
     if not _is_monotonic_utc(df.index):
-        raise ValueError(f"{contract.name}: index must be timezone-aware UTC and increasing")
+        raise ValueError(
+            f"{contract.name}: index must be timezone-aware UTC and increasing"
+        )
     missing_cols = [c for c in contract.columns if c not in df.columns]
     if missing_cols:
         raise ValueError(f"{contract.name}: missing columns {missing_cols}")
     if not contract.allow_missing and df[contract.columns].isna().any().any():
-        raise ValueError(f"{contract.name}: contains NaNs; set allow_missing=True to permit")
+        raise ValueError(
+            f"{contract.name}: contains NaNs; set allow_missing=True to permit"
+        )
     if contract.freq:
-        expected = pd.date_range(df.index.min(), df.index.max(), freq=contract.freq, tz="UTC")
+        expected = pd.date_range(
+            df.index.min(), df.index.max(), freq=contract.freq, tz="UTC"
+        )
         if len(expected) != len(df.index) or not df.index.equals(expected):
             raise ValueError(f"{contract.name}: index not regular at {contract.freq}")
     return df.sort_index()

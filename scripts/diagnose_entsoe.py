@@ -10,16 +10,16 @@ import requests
 import xml.etree.ElementTree as ET
 
 # Load token from .env
-env_path = Path(__file__).parents[1] / '.env'
+env_path = Path(__file__).parents[1] / ".env"
 token = None
 if env_path.exists():
-    for line in env_path.read_text().strip().split('\n'):
-        if 'ENTSOE_API_TOKEN' in line and '=' in line:
-            token = line.split('=', 1)[1].strip()
+    for line in env_path.read_text().strip().split("\n"):
+        if "ENTSOE_API_TOKEN" in line and "=" in line:
+            token = line.split("=", 1)[1].strip()
             break
 
 if not token:
-    raise SystemExit('ENTSOE_API_TOKEN not found in .env')
+    raise SystemExit("ENTSOE_API_TOKEN not found in .env")
 
 print(f"Token (masked): {token[:20]}...{token[-10:]}")
 
@@ -27,12 +27,12 @@ print(f"Token (masked): {token[:20]}...{token[-10:]}")
 print("\n=== Test 1: API Health Check ===")
 url = "https://web-api.tp.entsoe.eu/api"
 params = {
-    'securityToken': token,
-    'documentType': 'A44',  # Day-ahead prices
-    'in_Domain': '10Y1001A1001A82H',  # DE/LU
-    'out_Domain': '10Y1001A1001A82H',
-    'periodStart': '202512050000Z',  # older date, might fail if data unavailable
-    'periodEnd': '202512050100Z',    # 1 hour period
+    "securityToken": token,
+    "documentType": "A44",  # Day-ahead prices
+    "in_Domain": "10Y1001A1001A82H",  # DE/LU
+    "out_Domain": "10Y1001A1001A82H",
+    "periodStart": "202512050000Z",  # older date, might fail if data unavailable
+    "periodEnd": "202512050100Z",  # 1 hour period
 }
 
 print(f"GET {url}")
@@ -56,17 +56,18 @@ if r.status_code == 400:
 # Test 2: Try with a very recent date (last 24 hours)
 print("\n=== Test 2: Recent Data (Last 24 Hours) ===")
 import datetime as dt
+
 now = dt.datetime.utcnow()
-start = (now - dt.timedelta(days=1)).strftime('%Y%m%d%H%MZ')
-end = now.strftime('%Y%m%d%H%MZ')
+start = (now - dt.timedelta(days=1)).strftime("%Y%m%d%H%MZ")
+end = now.strftime("%Y%m%d%H%MZ")
 
 params2 = {
-    'securityToken': token,
-    'documentType': 'A44',
-    'in_Domain': '10Y1001A1001A82H',
-    'out_Domain': '10Y1001A1001A82H',
-    'periodStart': start,
-    'periodEnd': end,
+    "securityToken": token,
+    "documentType": "A44",
+    "in_Domain": "10Y1001A1001A82H",
+    "out_Domain": "10Y1001A1001A82H",
+    "periodStart": start,
+    "periodEnd": end,
 }
 
 print(f"periodStart: {start}, periodEnd: {end}")
@@ -78,19 +79,19 @@ if r2.status_code != 200:
 # Test 3: Try different document types
 print("\n=== Test 3: Different Document Types ===")
 doc_types = [
-    ('A44', 'Day-ahead Prices'),
-    ('A45', 'Year-ahead Prices'),
-    ('A81', 'Day-ahead Aggregated Load'),
+    ("A44", "Day-ahead Prices"),
+    ("A45", "Year-ahead Prices"),
+    ("A81", "Day-ahead Aggregated Load"),
 ]
 
 for doctype, desc in doc_types:
     params3 = {
-        'securityToken': token,
-        'documentType': doctype,
-        'in_Domain': '10Y1001A1001A82H',
-        'out_Domain': '10Y1001A1001A82H',
-        'periodStart': start,
-        'periodEnd': end,
+        "securityToken": token,
+        "documentType": doctype,
+        "in_Domain": "10Y1001A1001A82H",
+        "out_Domain": "10Y1001A1001A82H",
+        "periodStart": start,
+        "periodEnd": end,
     }
     r3 = requests.get(url, params=params3, timeout=10)
     print(f"{doctype} ({desc}): {r3.status_code}")
@@ -100,12 +101,12 @@ print("\n=== Test 4: Token Validation ===")
 # ENTSO-E might have a health endpoint
 health_url = "https://web-api.tp.entsoe.eu/api"
 health_params = {
-    'securityToken': token,
-    'documentType': 'A44',
-    'in_Domain': '10Y1001A1001A82H',
-    'out_Domain': '10Y1001A1001A82H',
-    'periodStart': now.strftime('%Y%m%d0000Z'),
-    'periodEnd': now.strftime('%Y%m%d2300Z'),
+    "securityToken": token,
+    "documentType": "A44",
+    "in_Domain": "10Y1001A1001A82H",
+    "out_Domain": "10Y1001A1001A82H",
+    "periodStart": now.strftime("%Y%m%d0000Z"),
+    "periodEnd": now.strftime("%Y%m%d2300Z"),
 }
 r4 = requests.get(health_url, params=health_params, timeout=10)
 print(f"Status: {r4.status_code}")
@@ -114,7 +115,9 @@ if r4.status_code == 200:
     # Count price points
     try:
         root = ET.fromstring(r4.content)
-        points = root.findall('.//{urn:iec62325.351:tc57wg16:451-1:publicationdocument:7:3}Point')
+        points = root.findall(
+            ".//{urn:iec62325.351:tc57wg16:451-1:publicationdocument:7:3}Point"
+        )
         print(f"Data points received: {len(points)}")
     except Exception as e:
         print(f"Could not parse response: {e}")

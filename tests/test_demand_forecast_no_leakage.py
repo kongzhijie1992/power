@@ -2,7 +2,10 @@ import numpy as np
 import pandas as pd
 
 
-from src.models.demand_forecast import prepare_error_features, build_future_error_features
+from src.models.demand_forecast import (
+    prepare_error_features,
+    build_future_error_features,
+)
 
 
 def test_prepare_error_features_uses_past_ramps_only():
@@ -28,7 +31,9 @@ def test_build_future_error_features_does_not_backfill_future_errors():
     # If future backfill happened, early rows would inherit ~100+ values.
     error_history = pd.Series(np.arange(30, dtype=float) + 100.0, index=idx[:30])
 
-    feats = build_future_error_features(forecast, error_history=error_history, add_lags=(24,))
+    feats = build_future_error_features(
+        forecast, error_history=error_history, add_lags=(24,)
+    )
 
     # For the first 24 hours there's no lag-24 available; should be 0 (not backfilled).
     assert feats.loc[idx[0], "error_lag_24h"] == 0

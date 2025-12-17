@@ -3,7 +3,9 @@ import pandas as pd
 from src.power_model.structural import StructuralStackModel
 
 
-def make_row(load: float, wind: float, solar: float, gas: float = 40.0, eua: float = 60.0):
+def make_row(
+    load: float, wind: float, solar: float, gas: float = 40.0, eua: float = 60.0
+):
     return pd.Series(
         {
             "load_forecast": load,
@@ -19,7 +21,11 @@ def make_row(load: float, wind: float, solar: float, gas: float = 40.0, eua: flo
 def test_structural_negative_price_on_oversupply():
     model = StructuralStackModel()
     row = make_row(load=5000, wind=6000, solar=2000)
-    price, _ = model._clear_price(demand_mw=row["load_forecast"], renewable_mw=row["wind_forecast"] + row["solar_forecast"], blocks=model._available_blocks(row))
+    price, _ = model._clear_price(
+        demand_mw=row["load_forecast"],
+        renewable_mw=row["wind_forecast"] + row["solar_forecast"],
+        blocks=model._available_blocks(row),
+    )
     assert price == model.config.negative_price_floor
 
 

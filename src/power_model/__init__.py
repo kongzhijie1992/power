@@ -27,12 +27,14 @@ from .plants import PlantStack
 try:
     from .residual import ResidualModel  # type: ignore
 except ModuleNotFoundError as _residual_exc:  # pragma: no cover
+
     class ResidualModel:  # type: ignore
         def __init__(self, *_, **__):
             raise ModuleNotFoundError(
                 "ResidualModel requires the optional 'catboost' dependency. "
                 "Install it (e.g. `pip install catboost`) to enable residual forecasts."
             ) from _residual_exc
+
 
 from .trading import TradingEngine, PositionSizer
 from .backtest import BacktestRunner, BacktestResult

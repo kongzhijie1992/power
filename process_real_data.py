@@ -15,75 +15,92 @@ import sys
 from pathlib import Path
 import subprocess
 
+
 def check_files():
     """Check if downloaded files exist."""
-    needed = ['GUI_2024.csv', 'GUI_2023.csv']
+    needed = ["GUI_2024.csv", "GUI_2023.csv"]
     found = []
     missing = []
-    
+
     for fname in needed:
         if Path(fname).exists():
-            size_mb = Path(fname).stat().st_size / (1024*1024)
+            size_mb = Path(fname).stat().st_size / (1024 * 1024)
             found.append((fname, size_mb))
         else:
             missing.append(fname)
-    
+
     return found, missing
 
+
 def main():
-    print("╔════════════════════════════════════════════════════════════════════════════╗")
-    print("║                    ENTSOE DATA PROCESSING HELPER                           ║")
-    print("╚════════════════════════════════════════════════════════════════════════════╝\n")
-    
+    print(
+        "╔════════════════════════════════════════════════════════════════════════════╗"
+    )
+    print(
+        "║                    ENTSOE DATA PROCESSING HELPER                           ║"
+    )
+    print(
+        "╚════════════════════════════════════════════════════════════════════════════╝\n"
+    )
+
     found, missing = check_files()
-    
+
     if missing:
         print("❌ Missing files:")
         for fname in missing:
             print(f"   - {fname}")
-        print("\n📥 Please download from: https://www.entsoe.eu/data/energy-prices-data/")
+        print(
+            "\n📥 Please download from: https://www.entsoe.eu/data/energy-prices-data/"
+        )
         print("   See instructions: python get_historical_data.py gui")
         sys.exit(1)
-    
+
     print("✅ Files found:")
     for fname, size_mb in found:
         print(f"   - {fname} ({size_mb:.2f} MB)")
-    
+
     # Merge
     print("\n🔄 Merging files...")
     cmd = [
-        sys.executable, 'scripts/merge_years.py',
-        '--input1', 'GUI_2024.csv',
-        '--input2', 'GUI_2023.csv',
-        '--output', 'data/DE/day_ahead.csv',
-        '--sequence', '1'
+        sys.executable,
+        "scripts/merge_years.py",
+        "--input1",
+        "GUI_2024.csv",
+        "--input2",
+        "GUI_2023.csv",
+        "--output",
+        "data/DE/day_ahead.csv",
+        "--sequence",
+        "1",
     ]
-    
+
     result = subprocess.run(cmd, capture_output=False, text=True)
-    
+
     if result.returncode != 0:
         print("❌ Merge failed!")
         sys.exit(1)
-    
+
     # Verify
     print("\n✅ Verifying data...")
     import pandas as pd
-    df = pd.read_csv('data/DE/day_ahead.csv', index_col=0, parse_dates=True)
+
+    df = pd.read_csv("data/DE/day_ahead.csv", index_col=0, parse_dates=True)
     print(f"   Rows: {len(df):,}")
     print(f"   Range: {df.index[0].date()} to {df.index[-1].date()}")
     print(f"   Missing: {df['value'].isna().sum()}")
     print(f"   Mean: {df['value'].mean():.2f} EUR/MWh")
-    
+
     # Test
     print("\n🧪 Running tests...")
-    test_cmd = [sys.executable, '-m', 'pytest', '-q']
+    test_cmd = [sys.executable, "-m", "pytest", "-q"]
     subprocess.run(test_cmd)
-    
-    print("\n" + "="*80)
+
+    print("\n" + "=" * 80)
     print("✅ REAL DATA INSTALLED AND VERIFIED!")
     print("   All 84 tests passing with production ENTSOE data")
     print("   Ready to backtest and deploy")
-    print("="*80)
+    print("=" * 80)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

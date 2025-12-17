@@ -43,14 +43,20 @@ def main():
     df["coal"] = (df["MTF=F"] / df["EURUSD=X"]) / 6.7  # EUR/MWh proxy
     df["co2"] = (df["KRBN"] / df["EURUSD=X"]).rename("co2")  # EUR proxy
 
-    out = pd.DataFrame(
-        {
-            "datetime": df.index,
-            "gas": df["TTF=F"],
-            "coal": df["coal"],
-            "co2": df["co2"],
-        }
-    ).set_index("datetime").resample("h").ffill().reset_index()
+    out = (
+        pd.DataFrame(
+            {
+                "datetime": df.index,
+                "gas": df["TTF=F"],
+                "coal": df["coal"],
+                "co2": df["co2"],
+            }
+        )
+        .set_index("datetime")
+        .resample("h")
+        .ffill()
+        .reset_index()
+    )
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(OUT_PATH, index=False)

@@ -10,15 +10,33 @@ from .timeutils import add_local_time_features, ensure_utc_index
 
 # Define strict contracts for each input stream
 PRICE_CONTRACT = TimeSeriesContract("price_da", ["price_da"], freq="1h")
-LOAD_FC_CONTRACT = TimeSeriesContract("load_forecast", ["load_forecast"], freq="1h", allow_missing=True)
-LOAD_ACT_CONTRACT = TimeSeriesContract("load_actual", ["load_actual"], freq="1h", allow_missing=True)
-WIND_FC_CONTRACT = TimeSeriesContract("wind_forecast", ["wind_forecast"], freq="1h", allow_missing=True)
-WIND_ACT_CONTRACT = TimeSeriesContract("wind_actual", ["wind_actual"], freq="1h", allow_missing=True)
-SOLAR_FC_CONTRACT = TimeSeriesContract("solar_forecast", ["solar_forecast"], freq="1h", allow_missing=True)
-SOLAR_ACT_CONTRACT = TimeSeriesContract("solar_actual", ["solar_actual"], freq="1h", allow_missing=True)
-GAS_CONTRACT = TimeSeriesContract("gas_price", ["gas_price"], freq="1h", allow_missing=True)
-EUA_CONTRACT = TimeSeriesContract("eua_price", ["eua_price"], freq="1h", allow_missing=True)
-OUTAGE_CONTRACT = TimeSeriesContract("availability_proxy", ["availability_factor"], freq="1h", allow_missing=True)
+LOAD_FC_CONTRACT = TimeSeriesContract(
+    "load_forecast", ["load_forecast"], freq="1h", allow_missing=True
+)
+LOAD_ACT_CONTRACT = TimeSeriesContract(
+    "load_actual", ["load_actual"], freq="1h", allow_missing=True
+)
+WIND_FC_CONTRACT = TimeSeriesContract(
+    "wind_forecast", ["wind_forecast"], freq="1h", allow_missing=True
+)
+WIND_ACT_CONTRACT = TimeSeriesContract(
+    "wind_actual", ["wind_actual"], freq="1h", allow_missing=True
+)
+SOLAR_FC_CONTRACT = TimeSeriesContract(
+    "solar_forecast", ["solar_forecast"], freq="1h", allow_missing=True
+)
+SOLAR_ACT_CONTRACT = TimeSeriesContract(
+    "solar_actual", ["solar_actual"], freq="1h", allow_missing=True
+)
+GAS_CONTRACT = TimeSeriesContract(
+    "gas_price", ["gas_price"], freq="1h", allow_missing=True
+)
+EUA_CONTRACT = TimeSeriesContract(
+    "eua_price", ["eua_price"], freq="1h", allow_missing=True
+)
+OUTAGE_CONTRACT = TimeSeriesContract(
+    "availability_proxy", ["availability_factor"], freq="1h", allow_missing=True
+)
 
 
 def load_parquet_contract(path: Path, contract: TimeSeriesContract) -> pd.DataFrame:
