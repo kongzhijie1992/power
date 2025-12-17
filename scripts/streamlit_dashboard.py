@@ -274,6 +274,35 @@ def _attach_srmc(df: pd.DataFrame, co2_price_override: Optional[float] = None) -
     return df
 
 
+def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
+    filtered = df.copy()
+    with st.expander("Filter table"):
+        name_filter = st.text_input("Name contains", "")
+        fuel_opts = sorted(filtered["fuel"].dropna().unique().tolist()) if "fuel" in filtered else []
+        fuel_sel = st.multiselect("Fuel", options=fuel_opts, default=fuel_opts)
+        stack_opts = sorted(filtered["stack_type"].dropna().unique().tolist()) if "stack_type" in filtered else []
+        stack_sel = st.multiselect("Stack type", options=stack_opts, default=stack_opts)
+        cap_min, cap_max = (float(filtered["capacity_mw"].min()), float(filtered["capacity_mw"].max())) if not filtered.empty else (0.0, 0.0)
+        cap_range = st.slider("Capacity range (MW)", min_value=cap_min, max_value=cap_max, value=(cap_min, cap_max))
+        if "srmc_eur_per_mwh" in filtered and filtered["srmc_eur_per_mwh"].dropna().size:
+            srmc_min = float(filtered["srmc_eur_per_mwh"].min())
+            srmc_max = float(filtered["srmc_eur_per_mwh"].max())
+            srmc_range = st.slider("SRMC range (EUR/MWh)", min_value=srmc_min, max_value=srmc_max, value=(srmc_min, srmc_max))
+        else:
+            srmc_range = None
+
+    if name_filter:
+        filtered = filtered[filtered["name"].str.contains(name_filter, case=False, na=False)]
+    if fuel_sel:
+        filtered = filtered[filtered["fuel"].isin(fuel_sel)]
+    if stack_sel:
+        filtered = filtered[filtered["stack_type"].isin(stack_sel)]
+    filtered = filtered[(filtered["capacity_mw"] >= cap_range[0]) & (filtered["capacity_mw"] <= cap_range[1])]
+    if srmc_range:
+        filtered = filtered[(filtered["srmc_eur_per_mwh"] >= srmc_range[0]) & (filtered["srmc_eur_per_mwh"] <= srmc_range[1])]
+    return filtered.reset_index(drop=True)
+
+
 def plants_tab():
     st.subheader("Plant stack (OPSD conventional)")
     with st.spinner("Loading OPSD plant metadata..."):
@@ -294,6 +323,7 @@ def plants_tab():
 
     co2_price_ui = st.number_input("CO₂ price (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=5.0)
     df = _attach_srmc(df, co2_price_override=co2_price_ui)
+    df = _apply_table_filters(df)
 
     total_cap = df["capacity_mw"].sum()
     st.caption(f"{len(df)} plants | {total_cap:,.0f} MW total | bidding zones: {', '.join(zones)}")
