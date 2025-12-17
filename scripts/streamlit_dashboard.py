@@ -17,6 +17,7 @@ from src.data.io import load_demand_series, load_tso_forecast_series, load_price
 from src.power_model.plants import PlantStack
 
 DATA_DIR = Path("data")
+MARKET_DIR = Path("data/market")
 
 
 def _load_secrets_into_env():
@@ -235,6 +236,71 @@ def price_tab():
 
 
 @st.cache_data(show_spinner=False)
+def _load_market_commodities() -> pd.DataFrame:
+    candidates = [
+        MARKET_DIR / "commodities.parquet",
+        MARKET_DIR / "commodities.csv",
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        if path.suffix.lower() == ".parquet":
+            df = pd.read_parquet(path)
+        else:
+            df = pd.read_csv(path)
+        if "datetime" in df.columns:
+            df["datetime"] = pd.to_datetime(df["datetime"])
+            df = df.set_index("datetime")
+        df.index = pd.to_datetime(df.index)
+        if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+            df.index = df.index.tz_convert("UTC").tz_localize(None)
+        df = df.sort_index()
+
+        rename = {"co2": "eua_price", "gas": "gas_price", "coal": "coal_price"}
+        for src, dst in rename.items():
+            if src in df.columns and dst not in df.columns:
+                df[dst] = df[src]
+        return df
+    return pd.DataFrame()
+
+
+def commodities_tab():
+    st.subheader("Commodity prices")
+    horizon = st.selectbox("Commodity horizon", options=["30d", "90d", "180d", "365d", "all"], index=1)
+
+    df = _load_market_commodities()
+    if df.empty:
+        st.info(
+            "No commodity file found. Add `data/market/commodities.csv` (columns: datetime, gas, coal, co2) "
+            "or run `python scripts/fetch_tradingview.py` to generate it."
+        )
+        return
+
+    df = _apply_horizon(df, horizon)
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if not numeric_cols:
+        st.warning("Commodity file has no numeric columns to plot.")
+        return
+
+    default_cols = [c for c in ["gas_price", "coal_price", "eua_price"] if c in numeric_cols] or numeric_cols[: min(3, len(numeric_cols))]
+    cols = st.multiselect("Series", options=numeric_cols, default=default_cols)
+    if not cols:
+        st.info("Select at least one series.")
+        return
+
+    fig = go.Figure()
+    for c in cols:
+        fig.add_trace(go.Scatter(x=df.index, y=df[c], mode="lines", name=c))
+    fig.update_layout(xaxis_title="Time", height=450, legend_orientation="h")
+    st.plotly_chart(fig, use_container_width=True)
+
+    latest = df[cols].dropna(how="all").tail(1)
+    if not latest.empty:
+        st.caption(f"Latest: {latest.index[0]}")
+        st.dataframe(latest.T.rename(columns={latest.index[0]: "value"}), use_container_width=True)
+
+
+@st.cache_data(show_spinner=False)
 def load_all_plants() -> pd.DataFrame:
     """Download OPSD stack once (cached) so the UI stays responsive."""
     # Older deployments of PlantStack may not accept include_renewables; fall back gracefully.
@@ -415,12 +481,14 @@ def plants_tab():
 def main():
     st.set_page_config(page_title="Power forecasts", layout="wide")
     st.title("Power forecasts dashboard")
-    tab1, tab2, tab3 = st.tabs(["Demand forecasts", "Price forecasts", "Plants (OPSD)"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Demand forecasts", "Price forecasts", "Commodity prices", "Plants (OPSD)"])
     with tab1:
         demand_tab()
     with tab2:
         price_tab()
     with tab3:
+        commodities_tab()
+    with tab4:
         plants_tab()
 
 
