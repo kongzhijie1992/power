@@ -225,7 +225,11 @@ def load_all_plants() -> pd.DataFrame:
         stack = PlantStack.from_opsd(countries=None, min_capacity_mw=0, include_renewables=True)
     except TypeError:
         stack = PlantStack.from_opsd(countries=None, min_capacity_mw=0)
-    return stack.plants.copy()
+    df = stack.plants.copy()
+    # Older cached stacks may not have bidding_zone; fall back to country to keep the UI usable.
+    if "bidding_zone" not in df.columns:
+        df["bidding_zone"] = df.get("country")
+    return df
 
 
 def _filter_plants(df: pd.DataFrame, min_capacity: float, include_chp: bool, bidding_zones: Tuple[str, ...]) -> pd.DataFrame:
