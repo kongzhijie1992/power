@@ -220,7 +220,11 @@ def price_tab():
 @st.cache_data(show_spinner=False)
 def load_all_plants() -> pd.DataFrame:
     """Download OPSD stack once (cached) so the UI stays responsive."""
-    stack = PlantStack.from_opsd(countries=None, min_capacity_mw=0, include_renewables=True)
+    # Older deployments of PlantStack may not accept include_renewables; fall back gracefully.
+    try:
+        stack = PlantStack.from_opsd(countries=None, min_capacity_mw=0, include_renewables=True)
+    except TypeError:
+        stack = PlantStack.from_opsd(countries=None, min_capacity_mw=0)
     return stack.plants.copy()
 
 
