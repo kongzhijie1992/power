@@ -502,18 +502,30 @@ def _attach_srmc(
     df: pd.DataFrame, co2_price_override: Optional[float] = None
 ) -> pd.DataFrame:
     df = df.copy()
-    eff = pd.to_numeric(df.get("efficiency"), errors="coerce")
+
+    def _col(name: str) -> pd.Series:
+        if name in df.columns:
+            return df[name]
+        return pd.Series(pd.NA, index=df.index)
+
+    eff = pd.to_numeric(_col("efficiency"), errors="coerce")
     fuel_price = pd.to_numeric(
-        df.get("fuel_price_eur_per_mwhth"), errors="coerce"
+        _col("fuel_price_eur_per_mwhth"), errors="coerce"
     ).fillna(0.0)
-    vom = pd.to_numeric(
-        df.get("variable_om_eur_per_mwh", df.get("vom")), errors="coerce"
-    ).fillna(0.0)
-    co2_int = pd.to_numeric(df.get("co2_intensity"), errors="coerce").fillna(0.0)
-    co2_price = pd.to_numeric(df.get("co2_price_eur_per_t"), errors="coerce")
+
+    vom_src = _col("variable_om_eur_per_mwh")
+    if vom_src.isna().all():
+        vom_src = _col("vom")
+    vom = pd.to_numeric(vom_src, errors="coerce").fillna(0.0)
+
+    co2_int = pd.to_numeric(_col("co2_intensity"), errors="coerce").fillna(0.0)
     if co2_price_override is not None:
-        co2_price = float(co2_price_override)
-    co2_price = co2_price.fillna(0.0) if isinstance(co2_price, pd.Series) else co2_price
+        co2_price = pd.Series(float(co2_price_override), index=df.index)
+    else:
+        co2_price = pd.to_numeric(_col("co2_price_eur_per_t"), errors="coerce").fillna(
+            0.0
+        )
+
     srmc = (
         fuel_price.div(eff.replace(0, pd.NA)).fillna(pd.NA) + co2_price * co2_int + vom
     )
