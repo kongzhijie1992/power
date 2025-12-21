@@ -1250,7 +1250,6 @@ def plant_status_tab():
     planned_kw = r"planned|under construction|construction|commissioning|to be built|projekt|project"
 
     df["plant_status"] = "unknown"
-    df["status_basis"] = "none"
 
     retired_mask = status_text.str.contains(retired_kw, regex=True, na=False)
     planned_mask = (
@@ -1261,26 +1260,14 @@ def plant_status_tab():
     )
 
     df.loc[retired_mask, "plant_status"] = "retired"
-    df.loc[retired_mask, "status_basis"] = "text"
 
     df.loc[planned_mask & ~retired_mask, "plant_status"] = "planned"
-    df.loc[planned_mask & ~retired_mask, "status_basis"] = df.loc[
-        planned_mask & ~retired_mask, "status_basis"
-    ].where(~(commissioned.notna() & (commissioned > current_year)), "commissioned_year")
-    df.loc[
-        planned_mask & ~retired_mask & (df["status_basis"] == "none"),
-        "status_basis",
-    ] = "text"
 
     df.loc[operational_mask & ~retired_mask & ~planned_mask, "plant_status"] = "operational"
-    df.loc[
-        (commissioned.notna() & (commissioned <= current_year)) & ~retired_mask & ~planned_mask,
-        "status_basis",
-    ] = "commissioned_year"
-    df.loc[
-        (commissioned.isna()) & operational_mask & ~retired_mask & ~planned_mask,
-        "status_basis",
-    ] = "assumed_present_in_opsd"
+
+    # Split commissioned year into historical vs expected (future) for display clarity.
+    df["expected_commissioned_year"] = commissioned.where(commissioned > current_year)
+    df["commissioned_year"] = commissioned.where(commissioned <= current_year)
     if "is_dispatchable" in df.columns:
         df["dispatchability"] = df["is_dispatchable"].fillna(True).map(
             {True: "dispatchable", False: "non-dispatchable"}
@@ -1305,7 +1292,6 @@ def plant_status_tab():
             "bidding_zone",
             "country",
             "plant_status",
-            "status_basis",
             "dispatchability",
             "fuel",
             "stack_type",
@@ -1325,6 +1311,7 @@ def plant_status_tab():
             "availability_factor",
             "is_chp",
             "commissioned_year",
+            "expected_commissioned_year",
             "eic_code",
             "technology",
             "lat",
