@@ -108,6 +108,18 @@ def _apply_horizon(df: pd.DataFrame, horizon: str) -> pd.DataFrame:
         return df
 
 
+def _apply_date_range(obj, start_date, end_date):
+    if obj is None:
+        return None
+    if getattr(obj, "empty", False):
+        return obj
+    if not hasattr(obj, "index"):
+        return obj
+    start_ts = pd.Timestamp(start_date)
+    end_exclusive = pd.Timestamp(end_date) + pd.Timedelta(days=1)
+    return obj[(obj.index >= start_ts) & (obj.index < end_exclusive)]
+
+
 def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
     fc_path = DATA_DIR / area / "demand_forecast.csv"
     if not fc_path.exists():
@@ -180,14 +192,34 @@ def demand_tab():
         options=areas,
         index=(areas.index("DE_LU") if "DE_LU" in areas else 0),
     )
-    horizon = st.selectbox(
-        "Time horizon", options=["7d", "30d", "90d", "180d", "365d", "all"], index=2
-    )
 
     df, quantiles = load_demand_data(area)
-    df = _apply_horizon(df, horizon)
+    if df.empty:
+        st.info("No demand data available for this zone.")
+        return
+
+    min_date = df.index.min().date()
+    max_date = df.index.max().date()
+    default_end = max_date
+    default_start = max(min_date, max_date - timedelta(days=90))
+    date_range = st.date_input(
+        "Date range (inclusive)",
+        value=(default_start, default_end),
+        min_value=min_date,
+        max_value=max_date,
+        key="demand_date_range",
+    )
+    if not isinstance(date_range, (tuple, list)) or len(date_range) != 2:
+        st.info("Select a start and end date.")
+        return
+    start_date, end_date = date_range
+    if start_date > end_date:
+        st.error("Start date must be <= end date.")
+        return
+
+    df = _apply_date_range(df, start_date, end_date)
     if quantiles is not None:
-        quantiles = _apply_horizon(quantiles, horizon)
+        quantiles = _apply_date_range(quantiles, start_date, end_date)
 
     fig = go.Figure()
     if "actual_load" in df:
@@ -258,20 +290,47 @@ def price_tab():
         options=areas,
         index=(areas.index("DE_LU") if "DE_LU" in areas else 0),
     )
-    horizon = st.selectbox(
-        "Price horizon", options=["7d", "30d", "90d", "180d", "365d", "all"], index=2
-    )
 
     actual, forward, history = load_price_data(area)
-    actual = (
-        _apply_horizon(actual.to_frame("value"), horizon)["value"]
-        if not actual.empty
-        else actual
+    if actual.empty and (forward is None or forward.empty) and (history is None or history.empty):
+        st.info("No price data available for this area.")
+        return
+
+    idx_min = None
+    idx_max = None
+    for obj in [actual, forward, history]:
+        if obj is None or getattr(obj, "empty", True):
+            continue
+        cur_min = obj.index.min()
+        cur_max = obj.index.max()
+        idx_min = cur_min if idx_min is None else min(idx_min, cur_min)
+        idx_max = cur_max if idx_max is None else max(idx_max, cur_max)
+    if idx_min is None or idx_max is None:
+        st.info("No timestamped price data available for this area.")
+        return
+
+    min_date = pd.Timestamp(idx_min).date()
+    max_date = pd.Timestamp(idx_max).date()
+    default_end = max_date
+    default_start = max(min_date, max_date - timedelta(days=90))
+    date_range = st.date_input(
+        "Date range (inclusive)",
+        value=(default_start, default_end),
+        min_value=min_date,
+        max_value=max_date,
+        key="price_date_range",
     )
-    if forward is not None:
-        forward = _apply_horizon(forward, horizon)
-    if history is not None:
-        history = _apply_horizon(history, horizon)
+    if not isinstance(date_range, (tuple, list)) or len(date_range) != 2:
+        st.info("Select a start and end date.")
+        return
+    start_date, end_date = date_range
+    if start_date > end_date:
+        st.error("Start date must be <= end date.")
+        return
+
+    actual = _apply_date_range(actual, start_date, end_date)
+    forward = _apply_date_range(forward, start_date, end_date)
+    history = _apply_date_range(history, start_date, end_date)
 
     fig = go.Figure()
     if len(actual) > 0:
