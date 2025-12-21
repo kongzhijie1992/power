@@ -711,20 +711,36 @@ def merit_order_rank_tab():
         "Bidding zone",
         options=zone_options,
         index=zone_options.index(default_zone) if default_zone in zone_options else 0,
+        key="merit_zone",
     )
 
     col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
     with col_cfg1:
         min_cap = st.slider(
-            "Minimum unit size (MW)", min_value=0, max_value=1000, value=50, step=10
+            "Minimum unit size (MW)",
+            min_value=1,
+            max_value=1000,
+            value=50,
+            step=1,
+            key="merit_min_unit_size_mw",
         )
-        include_chp = st.checkbox("Include CHP", value=True)
+        include_chp = st.checkbox("Include CHP", value=True, key="merit_include_chp")
     with col_cfg2:
         co2_price_ui = st.number_input(
-            "CO₂ price (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=5.0
+            "CO₂ price (EUR/t)",
+            min_value=0.0,
+            max_value=500.0,
+            value=80.0,
+            step=5.0,
+            key="merit_co2_price_eur_per_t",
         )
         availability_multiplier = st.slider(
-            "Availability multiplier", min_value=0.0, max_value=1.2, value=1.0, step=0.05
+            "Availability multiplier",
+            min_value=0.0,
+            max_value=1.2,
+            value=1.0,
+            step=0.05,
+            key="merit_availability_multiplier",
         )
     with col_cfg3:
         demand_source = st.selectbox(
@@ -733,6 +749,7 @@ def merit_order_rank_tab():
                 "From saved load series (if available)",
                 "Manual input",
             ],
+            key="merit_demand_source",
         )
 
     df_zone = _filter_plants(
@@ -746,13 +763,23 @@ def merit_order_rank_tab():
         return
 
     df_zone = _attach_srmc(df_zone, co2_price_override=co2_price_ui)
-    df_zone = df_zone[df_zone.get("is_dispatchable", True).fillna(True)]
+    if "is_dispatchable" in df_zone.columns:
+        dispatchable_mask = df_zone["is_dispatchable"]
+        if not isinstance(dispatchable_mask, pd.Series):
+            dispatchable_mask = pd.Series(True, index=df_zone.index)
+        dispatchable_mask = dispatchable_mask.fillna(True).astype(bool)
+        df_zone = df_zone[dispatchable_mask]
     df_zone = df_zone.dropna(subset=["srmc_eur_per_mwh", "capacity_mw"])
     if df_zone.empty:
         st.info("No plants with SRMC available after filters.")
         return
 
-    avail_factor = pd.to_numeric(df_zone.get("availability_factor", 1.0), errors="coerce").fillna(1.0)
+    if "availability_factor" in df_zone.columns:
+        avail_factor = pd.to_numeric(df_zone["availability_factor"], errors="coerce").fillna(
+            1.0
+        )
+    else:
+        avail_factor = pd.Series(1.0, index=df_zone.index)
     df_zone = df_zone.assign(available_mw=df_zone["capacity_mw"] * avail_factor * float(availability_multiplier))
     df_zone = df_zone[df_zone["available_mw"] > 0]
     if df_zone.empty:
@@ -896,14 +923,24 @@ def plants_tab():
     default_zones = [z for z in ("DE_LU", "FR") if z in zone_options] or zone_options[
         :1
     ]
-    zones = st.multiselect("Bidding zones", options=zone_options, default=default_zones)
+    zones = st.multiselect(
+        "Bidding zones",
+        options=zone_options,
+        default=default_zones,
+        key="plants_bidding_zones",
+    )
     st.caption(
         "Plants are mapped to bidding zones when available; otherwise we fall back to country code."
     )
     min_cap = st.slider(
-        "Minimum capacity (MW)", min_value=0, max_value=1000, value=50, step=10
+        "Minimum capacity (MW)",
+        min_value=0,
+        max_value=1000,
+        value=50,
+        step=10,
+        key="plants_min_capacity_mw",
     )
-    include_chp = st.checkbox("Include CHP", value=True)
+    include_chp = st.checkbox("Include CHP", value=True, key="plants_include_chp")
     df = _filter_plants(
         all_plants,
         min_capacity=min_cap,
@@ -915,7 +952,12 @@ def plants_tab():
         return
 
     co2_price_ui = st.number_input(
-        "CO₂ price (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=5.0
+        "CO₂ price (EUR/t)",
+        min_value=0.0,
+        max_value=500.0,
+        value=80.0,
+        step=5.0,
+        key="plants_co2_price_eur_per_t",
     )
     df = _attach_srmc(df, co2_price_override=co2_price_ui)
     df = _apply_table_filters(df)
