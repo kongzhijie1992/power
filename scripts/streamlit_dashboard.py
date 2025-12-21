@@ -422,12 +422,6 @@ def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
 
 def commodities_tab():
     st.subheader("Commodity prices")
-    horizon = st.selectbox(
-        "Commodity horizon",
-        options=["30d", "90d", "180d", "365d", "all"],
-        index=1,
-        key="commodities_horizon",
-    )
 
     lfs_candidate = None
     for p in [MARKET_DIR / "commodities.parquet", MARKET_DIR / "commodities.csv"]:
@@ -490,7 +484,26 @@ def commodities_tab():
             )
             return
 
-    df = _apply_horizon(df, horizon)
+    # Date range selector (inclusive).
+    min_date = df.index.min().date() if not df.empty else None
+    max_date = df.index.max().date() if not df.empty else None
+    default_end = max_date
+    default_start = max(min_date, max_date - timedelta(days=90)) if min_date else max_date
+
+    start_date, end_date = st.date_input(
+        "Date range (inclusive)",
+        value=(default_start, default_end),
+        min_value=min_date,
+        max_value=max_date,
+        key="commodities_date_range",
+    )
+    if start_date > end_date:
+        st.error("Start date must be <= end date.")
+        return
+
+    start_ts = pd.Timestamp(start_date)
+    end_ts = pd.Timestamp(end_date)
+    df = df[(df.index >= start_ts) & (df.index <= end_ts)]
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if not numeric_cols:
         st.warning("Commodity file has no numeric columns to plot.")
