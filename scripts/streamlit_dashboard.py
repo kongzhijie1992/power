@@ -651,19 +651,38 @@ def _attach_srmc(
 def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
     filtered = df.copy()
     with st.expander("Filter table"):
-        name_filter = st.text_input("Name contains", "")
+        name_filter = st.text_input("Name contains", "", key="plants_table_name_contains")
         fuel_opts = (
             sorted(filtered["fuel"].dropna().unique().tolist())
             if "fuel" in filtered
             else []
         )
-        fuel_sel = st.multiselect("Fuel", options=fuel_opts, default=fuel_opts)
+        fuel_sel = st.multiselect(
+            "Fuel", options=fuel_opts, default=fuel_opts, key="plants_table_fuel"
+        )
         stack_opts = (
             sorted(filtered["stack_type"].dropna().unique().tolist())
             if "stack_type" in filtered
             else []
         )
-        stack_sel = st.multiselect("Stack type", options=stack_opts, default=stack_opts)
+        stack_type_labels = {
+            "hydro_run_of_river": "hydro RoR",
+            "solar_pv_distributed": "solar PV dist",
+            "solar_pv_utility": "solar PV util",
+        }
+
+        def _fmt_stack_type(value: str) -> str:
+            if value in stack_type_labels:
+                return stack_type_labels[value]
+            return str(value).replace("_", " ")
+
+        stack_sel = st.multiselect(
+            "Stack type",
+            options=stack_opts,
+            default=stack_opts,
+            key="plants_table_stack_type",
+            format_func=_fmt_stack_type,
+        )
         cap_min, cap_max = (
             (float(filtered["capacity_mw"].min()), float(filtered["capacity_mw"].max()))
             if not filtered.empty
@@ -674,6 +693,7 @@ def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
             min_value=cap_min,
             max_value=cap_max,
             value=(cap_min, cap_max),
+            key="plants_table_capacity_range",
         )
         if (
             "srmc_eur_per_mwh" in filtered
@@ -686,6 +706,7 @@ def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
                 min_value=srmc_min,
                 max_value=srmc_max,
                 value=(srmc_min, srmc_max),
+                key="plants_table_srmc_range",
             )
         else:
             srmc_range = None
