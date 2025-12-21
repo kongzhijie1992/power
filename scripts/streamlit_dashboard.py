@@ -1241,13 +1241,46 @@ def plant_status_tab():
 
     current_year = pd.Timestamp.utcnow().year
     commissioned = pd.to_numeric(df.get("commissioned_year", pd.NA), errors="coerce")
+    comment = df.get("comment", pd.Series("", index=df.index)).fillna("").astype(str)
+    tech = df.get("technology", pd.Series("", index=df.index)).fillna("").astype(str)
+    name = df.get("name", pd.Series("", index=df.index)).fillna("").astype(str)
+    status_text = (comment + " " + tech + " " + name).str.lower()
+
+    retired_kw = r"decommission|de-?commission|shutdown|shut down|closed|mothball|retir|dismantl|scrapp"
+    planned_kw = r"planned|under construction|construction|commissioning|to be built|projekt|project"
+
     df["plant_status"] = "unknown"
-    df.loc[commissioned.notna() & (commissioned <= current_year), "plant_status"] = (
-        "operational"
+    df["status_basis"] = "none"
+
+    retired_mask = status_text.str.contains(retired_kw, regex=True, na=False)
+    planned_mask = (
+        commissioned.notna() & (commissioned > current_year)
+    ) | status_text.str.contains(planned_kw, regex=True, na=False)
+    operational_mask = (
+        (commissioned.notna() & (commissioned <= current_year)) | (commissioned.isna() & ~retired_mask & ~planned_mask)
     )
-    df.loc[commissioned.notna() & (commissioned > current_year), "plant_status"] = (
-        "planned"
-    )
+
+    df.loc[retired_mask, "plant_status"] = "retired"
+    df.loc[retired_mask, "status_basis"] = "text"
+
+    df.loc[planned_mask & ~retired_mask, "plant_status"] = "planned"
+    df.loc[planned_mask & ~retired_mask, "status_basis"] = df.loc[
+        planned_mask & ~retired_mask, "status_basis"
+    ].where(~(commissioned.notna() & (commissioned > current_year)), "commissioned_year")
+    df.loc[
+        planned_mask & ~retired_mask & (df["status_basis"] == "none"),
+        "status_basis",
+    ] = "text"
+
+    df.loc[operational_mask & ~retired_mask & ~planned_mask, "plant_status"] = "operational"
+    df.loc[
+        (commissioned.notna() & (commissioned <= current_year)) & ~retired_mask & ~planned_mask,
+        "status_basis",
+    ] = "commissioned_year"
+    df.loc[
+        (commissioned.isna()) & operational_mask & ~retired_mask & ~planned_mask,
+        "status_basis",
+    ] = "assumed_present_in_opsd"
     if "is_dispatchable" in df.columns:
         df["dispatchability"] = df["is_dispatchable"].fillna(True).map(
             {True: "dispatchable", False: "non-dispatchable"}
@@ -1272,6 +1305,7 @@ def plant_status_tab():
             "bidding_zone",
             "country",
             "plant_status",
+            "status_basis",
             "dispatchability",
             "fuel",
             "stack_type",
