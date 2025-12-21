@@ -360,6 +360,8 @@ def _load_market_commodities() -> pd.DataFrame:
         if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
             df.index = df.index.tz_convert("UTC").tz_localize(None)
         df = df.sort_index()
+        # Commodities are daily settlement series; normalize to daily timestamps.
+        df = df.resample("1D").last().dropna(how="all")
 
         rename = {"co2": "eua_price", "gas": "gas_price", "coal": "coal_price"}
         for src, dst in rename.items():
@@ -372,7 +374,7 @@ def _load_market_commodities() -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
     """
-    Fetch commodity proxies from TradingView via tvdatafeed (daily), then resample to hourly.
+    Fetch commodity proxies from TradingView via tvdatafeed (daily settlement).
     Returns a DataFrame indexed by datetime with columns gas, coal, co2 and normalized gas_price/coal_price/eua_price.
     """
     try:
@@ -407,7 +409,6 @@ def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
         return pd.DataFrame()
 
     out = pd.concat(rows, axis=1).sort_index().ffill()
-    out = out.resample("1H").ffill()
     out.index = pd.to_datetime(out.index)
     if isinstance(out.index, pd.DatetimeIndex) and out.index.tz is not None:
         out.index = out.index.tz_convert("UTC").tz_localize(None)
@@ -422,7 +423,10 @@ def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
 def commodities_tab():
     st.subheader("Commodity prices")
     horizon = st.selectbox(
-        "Commodity horizon", options=["30d", "90d", "180d", "365d", "all"], index=1
+        "Commodity horizon",
+        options=["30d", "90d", "180d", "365d", "all"],
+        index=1,
+        key="commodities_horizon",
     )
 
     lfs_candidate = None
@@ -495,7 +499,9 @@ def commodities_tab():
     default_cols = [
         c for c in ["gas_price", "coal_price", "eua_price"] if c in numeric_cols
     ] or numeric_cols[: min(3, len(numeric_cols))]
-    cols = st.multiselect("Series", options=numeric_cols, default=default_cols)
+    cols = st.multiselect(
+        "Series", options=numeric_cols, default=default_cols, key="commodities_series"
+    )
     if not cols:
         st.info("Select at least one series.")
         return
