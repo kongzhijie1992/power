@@ -1155,15 +1155,190 @@ def plants_tab():
     st.dataframe(style, use_container_width=True)
 
 
+def plant_status_tab():
+    st.subheader("Plants: status & constraints")
+    st.caption(
+        "Status/constraints are derived from OPSD metadata + model defaults (not real-time outages)."
+    )
+    with st.spinner("Loading OPSD plant metadata..."):
+        all_plants = load_all_plants()
+    if all_plants.empty:
+        st.error("No OPSD plants available. Check data/external cache.")
+        return
+
+    zone_options = sorted(all_plants["bidding_zone"].dropna().unique().tolist())
+    default_zones = [z for z in ("DE_LU", "FR") if z in zone_options] or zone_options[:1]
+    zones = st.multiselect(
+        "Bidding zones",
+        options=zone_options,
+        default=default_zones,
+        key="status_bidding_zones",
+    )
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        min_cap = st.slider(
+            "Minimum capacity (MW)",
+            min_value=0,
+            max_value=1000,
+            value=0,
+            step=10,
+            key="status_min_capacity_mw",
+        )
+        include_chp = st.checkbox(
+            "Include CHP", value=True, key="status_include_chp"
+        )
+    with col2:
+        include_non_dispatchable = st.checkbox(
+            "Include non-dispatchable",
+            value=True,
+            key="status_include_non_dispatchable",
+        )
+        availability_multiplier = st.slider(
+            "Availability multiplier",
+            min_value=0.0,
+            max_value=1.2,
+            value=1.0,
+            step=0.05,
+            key="status_availability_multiplier",
+        )
+    with col3:
+        co2_price_ui = st.number_input(
+            "CO₂ price (EUR/t)",
+            min_value=0.0,
+            max_value=500.0,
+            value=80.0,
+            step=5.0,
+            key="status_co2_price_eur_per_t",
+        )
+        name_filter = st.text_input("Name contains", "", key="status_name_contains")
+
+    df = _filter_plants(
+        all_plants,
+        min_capacity=min_cap,
+        include_chp=include_chp,
+        bidding_zones=tuple(zones),
+    )
+    if df.empty:
+        st.info("No plants after filters.")
+        return
+
+    if not include_non_dispatchable and "is_dispatchable" in df.columns:
+        dispatchable_mask = df["is_dispatchable"]
+        dispatchable_mask = dispatchable_mask.fillna(True).astype(bool)
+        df = df[dispatchable_mask].reset_index(drop=True)
+        if df.empty:
+            st.info("No dispatchable plants after filters.")
+            return
+
+    if name_filter:
+        df = df[df["name"].astype(str).str.contains(name_filter, case=False, na=False)]
+        if df.empty:
+            st.info("No plants match the name filter.")
+            return
+
+    df = _attach_srmc(df, co2_price_override=co2_price_ui)
+
+    if "availability_factor" in df.columns:
+        avail_factor = pd.to_numeric(df["availability_factor"], errors="coerce").fillna(
+            1.0
+        )
+    else:
+        avail_factor = pd.Series(1.0, index=df.index)
+    df["available_mw"] = df["capacity_mw"] * avail_factor * float(
+        availability_multiplier
+    )
+
+    current_year = pd.Timestamp.utcnow().year
+    commissioned = pd.to_numeric(df.get("commissioned_year", pd.NA), errors="coerce")
+    df["plant_status"] = "unknown"
+    df.loc[commissioned.notna() & (commissioned <= current_year), "plant_status"] = (
+        "operational"
+    )
+    df.loc[commissioned.notna() & (commissioned > current_year), "plant_status"] = (
+        "planned"
+    )
+    if "is_dispatchable" in df.columns:
+        df["dispatchability"] = df["is_dispatchable"].fillna(True).map(
+            {True: "dispatchable", False: "non-dispatchable"}
+        )
+    else:
+        df["dispatchability"] = "dispatchable"
+
+    ramp_up = pd.to_numeric(df.get("ramp_up_mw_per_min", pd.NA), errors="coerce")
+    pmax = pd.to_numeric(df.get("p_max_mw", df.get("capacity_mw", pd.NA)), errors="coerce")
+    df["ramp_up_pct_per_min"] = (ramp_up / pmax.replace(0, pd.NA)) * 100.0
+
+    df = df.sort_values(
+        ["bidding_zone", "plant_status", "dispatchability", "srmc_eur_per_mwh"],
+        ascending=[True, True, True, True],
+    ).reset_index(drop=True)
+
+    st.caption(f"{len(df):,} plants")
+    cols = [
+        c
+        for c in [
+            "name",
+            "bidding_zone",
+            "country",
+            "plant_status",
+            "dispatchability",
+            "fuel",
+            "stack_type",
+            "capacity_mw",
+            "available_mw",
+            "p_min_mw",
+            "p_max_mw",
+            "ramp_up_mw_per_min",
+            "ramp_down_mw_per_min",
+            "ramp_up_pct_per_min",
+            "min_up_hours",
+            "min_down_hours",
+            "startup_cost_eur",
+            "srmc_eur_per_mwh",
+            "efficiency",
+            "co2_intensity",
+            "availability_factor",
+            "is_chp",
+            "commissioned_year",
+            "eic_code",
+            "technology",
+            "lat",
+            "lon",
+        ]
+        if c in df.columns
+    ]
+    st.dataframe(
+        df[cols].style.format(
+            {
+                "capacity_mw": "{:,.1f}",
+                "available_mw": "{:,.1f}",
+                "p_min_mw": "{:,.1f}",
+                "p_max_mw": "{:,.1f}",
+                "ramp_up_mw_per_min": "{:,.2f}",
+                "ramp_down_mw_per_min": "{:,.2f}",
+                "ramp_up_pct_per_min": "{:.2f}",
+                "startup_cost_eur": "{:,.0f}",
+                "srmc_eur_per_mwh": "{:,.1f}",
+                "efficiency": "{:.2f}",
+                "co2_intensity": "{:.2f}",
+                "availability_factor": "{:.2f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+
 def main():
     st.set_page_config(page_title="Power forecasts", layout="wide")
     st.title("Power forecasts dashboard")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
             "Demand forecasts",
             "Price forecasts",
             "Merit order rank",
             "Commodity prices",
+            "Plants (status)",
             "Plants (OPSD)",
         ]
     )
@@ -1176,6 +1351,8 @@ def main():
     with tab4:
         commodities_tab()
     with tab5:
+        plant_status_tab()
+    with tab6:
         plants_tab()
 
 
