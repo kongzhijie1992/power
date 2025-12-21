@@ -530,14 +530,6 @@ def commodities_tab():
     fig.update_layout(xaxis_title="Time", height=450, legend_orientation="h")
     st.plotly_chart(fig, use_container_width=True)
 
-    latest = df[cols].dropna(how="all").tail(1)
-    if not latest.empty:
-        st.caption(f"Latest: {latest.index[0]}")
-        st.dataframe(
-            latest.T.rename(columns={latest.index[0]: "value"}),
-            use_container_width=True,
-        )
-
 
 @st.cache_data(show_spinner=False)
 def load_all_plants() -> pd.DataFrame:
