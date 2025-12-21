@@ -2,7 +2,6 @@
 """Unified Streamlit dashboard for demand and price forecasts."""
 import os
 import subprocess
-from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Tuple, List
 import sys
@@ -680,6 +679,22 @@ def _series_value_at_or_nearest(series: pd.Series, ts: pd.Timestamp) -> Tuple[pd
     return actual_ts, value
 
 
+def _series_value_at_or_before(series: pd.Series, ts: pd.Timestamp) -> Tuple[pd.Timestamp, float]:
+    if series.empty:
+        raise ValueError("Series is empty")
+    series = series.sort_index()
+    idx = series.index
+    if not isinstance(idx, pd.DatetimeIndex):
+        raise TypeError("Series index must be datetime-like")
+    target_ts = pd.Timestamp(ts)
+    pos = idx.get_indexer([target_ts], method="pad")[0]
+    if pos < 0:
+        raise ValueError(f"No value at or before {target_ts}")
+    actual_ts = pd.Timestamp(idx[pos])
+    value = float(series.iloc[pos])
+    return actual_ts, value
+
+
 def merit_order_rank_tab():
     st.subheader("Merit order rank")
     st.caption(
@@ -726,14 +741,6 @@ def merit_order_rank_tab():
         )
         include_chp = st.checkbox("Include CHP", value=True, key="merit_include_chp")
     with col_cfg2:
-        co2_price_ui = st.number_input(
-            "CO₂ price (EUR/t)",
-            min_value=0.0,
-            max_value=500.0,
-            value=80.0,
-            step=5.0,
-            key="merit_co2_price_eur_per_t",
-        )
         availability_multiplier = st.slider(
             "Availability multiplier",
             min_value=0.0,
@@ -752,82 +759,146 @@ def merit_order_rank_tab():
             key="merit_demand_source",
         )
 
-    df_zone = _filter_plants(
+    demand_series: Optional[pd.Series] = None
+    if demand_source == "From saved load series (if available)" and zone in demand_areas:
+        try:
+            demand_series = _load_demand_series_cached(zone).dropna()
+        except FileNotFoundError:
+            demand_series = None
+
+    if demand_source == "From saved load series (if available)" and demand_series is None:
+        st.warning(f"No saved load series found for `{zone}`; switch to manual demand.")
+        demand_source = "Manual input"
+
+    col_time1, col_time2 = st.columns(2)
+    with col_time1:
+        if demand_series is not None and not demand_series.empty:
+            min_date = demand_series.index.min().date()
+            max_date = demand_series.index.max().date()
+            default_date = max_date
+            delivery_date = st.date_input(
+                "Delivery date (UTC)",
+                value=default_date,
+                min_value=min_date,
+                max_value=max_date,
+                key="merit_delivery_date",
+            )
+        else:
+            delivery_date = st.date_input("Delivery date (UTC)", key="merit_delivery_date")
+    with col_time2:
+        period = st.selectbox(
+            "Bidding period (UTC hour)",
+            options=list(range(1, 25)),
+            index=0,
+            key="merit_bidding_period",
+            format_func=lambda p: f"{p:02d} ({p-1:02d}:00–{p:02d}:00)",
+        )
+
+    ts_delivery = pd.Timestamp(delivery_date) + pd.Timedelta(hours=int(period) - 1)
+    st.caption(f"Selected delivery hour: `{ts_delivery}` (UTC)")
+
+    df_zone_base = _filter_plants(
         all_plants,
         min_capacity=min_cap,
         include_chp=include_chp,
         bidding_zones=(zone,),
     )
-    if df_zone.empty:
+    if df_zone_base.empty:
         st.info("No plants in this zone after filters.")
         return
 
-    df_zone = _attach_srmc(df_zone, co2_price_override=co2_price_ui)
-    if "is_dispatchable" in df_zone.columns:
-        dispatchable_mask = df_zone["is_dispatchable"]
+    if "is_dispatchable" in df_zone_base.columns:
+        dispatchable_mask = df_zone_base["is_dispatchable"]
         if not isinstance(dispatchable_mask, pd.Series):
-            dispatchable_mask = pd.Series(True, index=df_zone.index)
+            dispatchable_mask = pd.Series(True, index=df_zone_base.index)
         dispatchable_mask = dispatchable_mask.fillna(True).astype(bool)
-        df_zone = df_zone[dispatchable_mask]
-    df_zone = df_zone.dropna(subset=["srmc_eur_per_mwh", "capacity_mw"])
+        df_zone_base = df_zone_base[dispatchable_mask]
+
+    if "availability_factor" in df_zone_base.columns:
+        avail_factor = pd.to_numeric(
+            df_zone_base["availability_factor"], errors="coerce"
+        ).fillna(1.0)
+    else:
+        avail_factor = pd.Series(1.0, index=df_zone_base.index)
+
+    df_zone_base = df_zone_base.assign(
+        available_mw=df_zone_base["capacity_mw"]
+        * avail_factor
+        * float(availability_multiplier)
+    )
+    df_zone_base = df_zone_base[df_zone_base["available_mw"] > 0].reset_index(drop=True)
+    if df_zone_base.empty:
+        st.info("No available capacity after applying availability settings.")
+        return
+
+    total_capacity = float(df_zone_base["available_mw"].sum())
+
+    co2_col, demand_col = st.columns(2)
+    with co2_col:
+        co2_source = st.selectbox(
+            "CO₂ price source",
+            options=[
+                "Front contract settlement (point-in-time)",
+                "Manual",
+            ],
+            key="merit_co2_source",
+        )
+
+        co2_price_ui: float
+        if co2_source == "Front contract settlement (point-in-time)":
+            commodities = _load_market_commodities()
+            eua_col = (
+                "eua_price"
+                if "eua_price" in commodities.columns
+                else ("co2" if "co2" in commodities.columns else None)
+            )
+            if commodities.empty or eua_col is None:
+                st.warning("No EUA/CO₂ series available in `data/market/commodities.csv`; using manual CO₂.")
+                co2_source = "Manual"
+            else:
+                eua_series = pd.to_numeric(commodities[eua_col], errors="coerce").dropna()
+                asof_ts = pd.Timestamp(delivery_date) - pd.Timedelta(days=1) + pd.Timedelta(hours=12)
+                try:
+                    co2_ts_used, co2_price_ui = _series_value_at_or_before(eua_series, asof_ts)
+                    st.caption(f"As-of `{asof_ts}` → using `{co2_ts_used}`: {co2_price_ui:,.2f} EUR/t")
+                except Exception as e:  # noqa: BLE001
+                    st.warning(f"Could not resolve CO₂ price as-of `{asof_ts}` ({e}); using manual CO₂.")
+                    co2_source = "Manual"
+        if co2_source == "Manual":
+            co2_price_ui = st.number_input(
+                "CO₂ price (EUR/t)",
+                min_value=0.0,
+                max_value=500.0,
+                value=80.0,
+                step=5.0,
+                key="merit_co2_price_eur_per_t",
+            )
+
+    with demand_col:
+        demand_mw: Optional[float]
+        ts_used: Optional[pd.Timestamp]
+        if demand_source == "From saved load series (if available)" and demand_series is not None:
+            ts_used, demand_mw = _series_value_at_or_nearest(demand_series, ts_delivery)
+            st.caption(f"Using demand at `{ts_used}`: {demand_mw:,.0f} MW")
+        else:
+            ts_used = None
+            demand_mw = st.number_input(
+                "Demand for bidding period (MW)",
+                min_value=0.0,
+                max_value=max(total_capacity * 2.0, 1.0),
+                value=min(total_capacity * 0.6, max(total_capacity - 1.0, 0.0)),
+                step=100.0,
+                key="merit_demand_mw_manual",
+            )
+
+    df_zone = _attach_srmc(df_zone_base, co2_price_override=co2_price_ui)
+    df_zone = df_zone.dropna(subset=["srmc_eur_per_mwh", "capacity_mw", "available_mw"])
     if df_zone.empty:
         st.info("No plants with SRMC available after filters.")
         return
 
-    if "availability_factor" in df_zone.columns:
-        avail_factor = pd.to_numeric(df_zone["availability_factor"], errors="coerce").fillna(
-            1.0
-        )
-    else:
-        avail_factor = pd.Series(1.0, index=df_zone.index)
-    df_zone = df_zone.assign(available_mw=df_zone["capacity_mw"] * avail_factor * float(availability_multiplier))
-    df_zone = df_zone[df_zone["available_mw"] > 0]
-    if df_zone.empty:
-        st.info("No available capacity after applying availability settings.")
-        return
-
     df_zone = df_zone.sort_values(["srmc_eur_per_mwh", "available_mw"], ascending=[True, False]).reset_index(drop=True)
     df_zone["cum_capacity_mw"] = df_zone["available_mw"].cumsum()
-    total_capacity = float(df_zone["available_mw"].sum())
-
-    demand_mw: Optional[float]
-    ts_selected: Optional[pd.Timestamp]
-    ts_used: Optional[pd.Timestamp]
-
-    if demand_source == "From saved load series (if available)" and zone in demand_areas:
-        try:
-            demand_series = _load_demand_series_cached(zone).dropna()
-        except FileNotFoundError:
-            demand_series = pd.Series(dtype=float)
-        if demand_series.empty:
-            st.warning(f"No saved load series found for `{zone}`; switch to manual demand.")
-            demand_mw, ts_selected, ts_used = None, None, None
-        else:
-            min_ts = demand_series.index.min().to_pydatetime()
-            max_ts = demand_series.index.max().to_pydatetime()
-            default_ts = max_ts
-            ts_selected = pd.Timestamp(
-                st.slider(
-                    "Bidding period / delivery hour (UTC)",
-                    min_value=min_ts,
-                    max_value=max_ts,
-                    value=default_ts,
-                    step=timedelta(hours=1),
-                    format="YYYY-MM-DD HH:mm",
-                )
-            )
-            ts_used, demand_mw = _series_value_at_or_nearest(demand_series, ts_selected)
-            st.caption(f"Using demand at `{ts_used}`: {demand_mw:,.0f} MW")
-    else:
-        ts_selected = None
-        ts_used = None
-        demand_mw = st.number_input(
-            "Demand for bidding period (MW)",
-            min_value=0.0,
-            max_value=max(total_capacity * 2.0, 1.0),
-            value=min(total_capacity * 0.6, max(total_capacity - 1.0, 0.0)),
-            step=100.0,
-        )
 
     if demand_mw is None:
         return
