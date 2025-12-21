@@ -361,13 +361,6 @@ def _load_market_commodities() -> pd.DataFrame:
         if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
             df.index = df.index.tz_convert("UTC").tz_localize(None)
         df = df.sort_index()
-        # Commodities are daily settlement series; normalize to daily timestamps.
-        df = df.resample("1D").last().dropna(how="all")
-
-        rename = {"co2": "eua_price", "gas": "gas_price", "coal": "coal_price"}
-        for src, dst in rename.items():
-            if src in df.columns and dst not in df.columns:
-                df[dst] = df[src]
         return df
     return pd.DataFrame()
 
@@ -376,7 +369,7 @@ def _load_market_commodities() -> pd.DataFrame:
 def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
     """
     Fetch commodity proxies from TradingView via tvdatafeed (daily settlement).
-    Returns a DataFrame indexed by datetime with columns gas, coal, co2 and normalized gas_price/coal_price/eua_price.
+    Returns a DataFrame indexed by datetime with columns gas, coal, co2.
     """
     try:
         from tvDatafeed import Interval, TvDatafeed  # type: ignore
@@ -413,11 +406,6 @@ def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
     out.index = pd.to_datetime(out.index)
     if isinstance(out.index, pd.DatetimeIndex) and out.index.tz is not None:
         out.index = out.index.tz_convert("UTC").tz_localize(None)
-
-    rename = {"co2": "eua_price", "gas": "gas_price", "coal": "coal_price"}
-    for src, dst in rename.items():
-        if src in out.columns and dst not in out.columns:
-            out[dst] = out[src]
     return out
 
 
@@ -455,11 +443,6 @@ def commodities_tab():
             df.index = pd.to_datetime(df.index)
             df = df.sort_index()
 
-            rename = {"co2": "eua_price", "gas": "gas_price", "coal": "coal_price"}
-            for src, dst in rename.items():
-                if src in df.columns and dst not in df.columns:
-                    df[dst] = df[src]
-
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("Fetch via TradingView"):
@@ -480,10 +463,16 @@ def commodities_tab():
 
         if df.empty:
             st.caption(
-                "Expected columns: `datetime, gas, coal, co2` (optionally `gas_price, coal_price, eua_price`). "
+                "Expected columns: `datetime, gas, coal, co2`. "
                 "To generate locally: `python scripts/fetch_tradingview.py`."
             )
             return
+
+    show_daily = st.checkbox(
+        "Show daily settlement only",
+        value=True,
+        key="commodities_daily_only",
+    )
 
     # Date range selector (inclusive).
     min_date = df.index.min().date() if not df.empty else None
@@ -507,15 +496,17 @@ def commodities_tab():
         return
 
     start_ts = pd.Timestamp(start_date)
-    end_ts = pd.Timestamp(end_date)
-    df = df[(df.index >= start_ts) & (df.index <= end_ts)]
+    end_exclusive = pd.Timestamp(end_date) + pd.Timedelta(days=1)
+    df = df[(df.index >= start_ts) & (df.index < end_exclusive)]
+    if show_daily and not df.empty:
+        df = df.resample("1D").last().dropna(how="all")
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if not numeric_cols:
         st.warning("Commodity file has no numeric columns to plot.")
         return
 
     default_cols = [
-        c for c in ["gas_price", "coal_price", "eua_price"] if c in numeric_cols
+        c for c in ["gas", "coal", "co2"] if c in numeric_cols
     ] or numeric_cols[: min(3, len(numeric_cols))]
     cols = st.multiselect(
         "Series", options=numeric_cols, default=default_cols, key="commodities_series"
@@ -863,16 +854,15 @@ def merit_order_rank_tab():
         co2_price_ui: float
         if co2_source == "Front contract settlement (point-in-time)":
             commodities = _load_market_commodities()
-            eua_col = (
-                "eua_price"
-                if "eua_price" in commodities.columns
-                else ("co2" if "co2" in commodities.columns else None)
-            )
-            if commodities.empty or eua_col is None:
-                st.warning("No EUA/CO₂ series available in `data/market/commodities.csv`; using manual CO₂.")
+            if commodities.empty or "co2" not in commodities.columns:
+                st.warning(
+                    "No `co2` series available in `data/market/commodities.csv`; using manual CO₂."
+                )
                 co2_source = "Manual"
             else:
-                eua_series = pd.to_numeric(commodities[eua_col], errors="coerce").dropna()
+                eua_series = pd.to_numeric(commodities["co2"], errors="coerce").dropna()
+                if not eua_series.empty:
+                    eua_series = eua_series.resample("1D").last().dropna()
                 asof_ts = pd.Timestamp(delivery_date) - pd.Timedelta(days=1) + pd.Timedelta(hours=12)
                 try:
                     co2_ts_used, co2_price_ui = _series_value_at_or_before(eua_series, asof_ts)
