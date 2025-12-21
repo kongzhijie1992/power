@@ -2,6 +2,7 @@
 """Unified Streamlit dashboard for demand and price forecasts."""
 import os
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Tuple, List
 import sys
@@ -490,13 +491,17 @@ def commodities_tab():
     default_end = max_date
     default_start = max(min_date, max_date - timedelta(days=90)) if min_date else max_date
 
-    start_date, end_date = st.date_input(
+    date_range = st.date_input(
         "Date range (inclusive)",
         value=(default_start, default_end),
         min_value=min_date,
         max_value=max_date,
         key="commodities_date_range",
     )
+    if not isinstance(date_range, (tuple, list)) or len(date_range) != 2:
+        st.info("Select a start and end date.")
+        return
+    start_date, end_date = date_range
     if start_date > end_date:
         st.error("Start date must be <= end date.")
         return
