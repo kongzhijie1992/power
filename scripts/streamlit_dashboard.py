@@ -2,6 +2,7 @@
 """Unified Streamlit dashboard for demand and price forecasts."""
 import os
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Tuple, List
 import sys
@@ -644,6 +645,246 @@ def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
     return filtered.reset_index(drop=True)
 
 
+@st.cache_data(show_spinner=False)
+def _load_demand_series_cached(area: str) -> pd.Series:
+    s = load_demand_series(area)
+    s = s.sort_index()
+    s.index = pd.to_datetime(s.index)
+    if isinstance(s.index, pd.DatetimeIndex) and s.index.tz is not None:
+        s.index = s.index.tz_convert("UTC").tz_localize(None)
+    return s
+
+
+@st.cache_data(show_spinner=False)
+def _list_areas_with_any_files(filenames: Tuple[str, ...]) -> List[str]:
+    areas: List[str] = []
+    for area_dir in DATA_DIR.iterdir():
+        if not area_dir.is_dir():
+            continue
+        if any((area_dir / name).exists() for name in filenames):
+            areas.append(area_dir.name)
+    return sorted(areas)
+
+
+def _series_value_at_or_nearest(series: pd.Series, ts: pd.Timestamp) -> Tuple[pd.Timestamp, float]:
+    if series.empty:
+        raise ValueError("Series is empty")
+    series = series.sort_index()
+    idx = series.index
+    if not isinstance(idx, pd.DatetimeIndex):
+        raise TypeError("Series index must be datetime-like")
+    target_ts = pd.Timestamp(ts)
+    pos = idx.get_indexer([target_ts], method="nearest")[0]
+    actual_ts = pd.Timestamp(idx[pos])
+    value = float(series.iloc[pos])
+    return actual_ts, value
+
+
+def merit_order_rank_tab():
+    st.subheader("Merit order rank")
+    st.caption(
+        "Estimate marginal unit and merit-order rank from OPSD plant SRMC and demand for a selected bidding zone and delivery hour (UTC)."
+    )
+
+    with st.spinner("Loading OPSD plant metadata..."):
+        all_plants = load_all_plants()
+    if all_plants.empty:
+        st.error("No OPSD plants available. Check data/external cache.")
+        return
+
+    demand_areas = _list_areas_with_any_files(
+        (
+            "load_actual.parquet",
+            "load_actual.csv",
+            "load_real.parquet",
+            "load_real.csv",
+            "load.parquet",
+            "load.csv",
+        )
+    )
+
+    zone_options = sorted(all_plants["bidding_zone"].dropna().unique().tolist())
+    default_zone = (
+        "DE_LU" if "DE_LU" in zone_options else (zone_options[0] if zone_options else None)
+    )
+    zone = st.selectbox(
+        "Bidding zone",
+        options=zone_options,
+        index=zone_options.index(default_zone) if default_zone in zone_options else 0,
+    )
+
+    col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
+    with col_cfg1:
+        min_cap = st.slider(
+            "Minimum unit size (MW)", min_value=0, max_value=1000, value=50, step=10
+        )
+        include_chp = st.checkbox("Include CHP", value=True)
+    with col_cfg2:
+        co2_price_ui = st.number_input(
+            "CO₂ price (EUR/t)", min_value=0.0, max_value=500.0, value=80.0, step=5.0
+        )
+        availability_multiplier = st.slider(
+            "Availability multiplier", min_value=0.0, max_value=1.2, value=1.0, step=0.05
+        )
+    with col_cfg3:
+        demand_source = st.selectbox(
+            "Demand source",
+            options=[
+                "From saved load series (if available)",
+                "Manual input",
+            ],
+        )
+
+    df_zone = _filter_plants(
+        all_plants,
+        min_capacity=min_cap,
+        include_chp=include_chp,
+        bidding_zones=(zone,),
+    )
+    if df_zone.empty:
+        st.info("No plants in this zone after filters.")
+        return
+
+    df_zone = _attach_srmc(df_zone, co2_price_override=co2_price_ui)
+    df_zone = df_zone[df_zone.get("is_dispatchable", True).fillna(True)]
+    df_zone = df_zone.dropna(subset=["srmc_eur_per_mwh", "capacity_mw"])
+    if df_zone.empty:
+        st.info("No plants with SRMC available after filters.")
+        return
+
+    avail_factor = pd.to_numeric(df_zone.get("availability_factor", 1.0), errors="coerce").fillna(1.0)
+    df_zone = df_zone.assign(available_mw=df_zone["capacity_mw"] * avail_factor * float(availability_multiplier))
+    df_zone = df_zone[df_zone["available_mw"] > 0]
+    if df_zone.empty:
+        st.info("No available capacity after applying availability settings.")
+        return
+
+    df_zone = df_zone.sort_values(["srmc_eur_per_mwh", "available_mw"], ascending=[True, False]).reset_index(drop=True)
+    df_zone["cum_capacity_mw"] = df_zone["available_mw"].cumsum()
+    total_capacity = float(df_zone["available_mw"].sum())
+
+    demand_mw: Optional[float]
+    ts_selected: Optional[pd.Timestamp]
+    ts_used: Optional[pd.Timestamp]
+
+    if demand_source == "From saved load series (if available)" and zone in demand_areas:
+        try:
+            demand_series = _load_demand_series_cached(zone).dropna()
+        except FileNotFoundError:
+            demand_series = pd.Series(dtype=float)
+        if demand_series.empty:
+            st.warning(f"No saved load series found for `{zone}`; switch to manual demand.")
+            demand_mw, ts_selected, ts_used = None, None, None
+        else:
+            min_ts = demand_series.index.min().to_pydatetime()
+            max_ts = demand_series.index.max().to_pydatetime()
+            default_ts = max_ts
+            ts_selected = pd.Timestamp(
+                st.slider(
+                    "Bidding period / delivery hour (UTC)",
+                    min_value=min_ts,
+                    max_value=max_ts,
+                    value=default_ts,
+                    step=timedelta(hours=1),
+                    format="YYYY-MM-DD HH:mm",
+                )
+            )
+            ts_used, demand_mw = _series_value_at_or_nearest(demand_series, ts_selected)
+            st.caption(f"Using demand at `{ts_used}`: {demand_mw:,.0f} MW")
+    else:
+        ts_selected = None
+        ts_used = None
+        demand_mw = st.number_input(
+            "Demand for bidding period (MW)",
+            min_value=0.0,
+            max_value=max(total_capacity * 2.0, 1.0),
+            value=min(total_capacity * 0.6, max(total_capacity - 1.0, 0.0)),
+            step=100.0,
+        )
+
+    if demand_mw is None:
+        return
+
+    demand_mw = float(demand_mw)
+    if demand_mw <= 0:
+        st.info("Demand must be > 0 MW.")
+        return
+
+    pos = int((df_zone["cum_capacity_mw"] >= demand_mw).idxmax()) if demand_mw <= total_capacity else None
+    if pos is None:
+        st.error(f"Demand {demand_mw:,.0f} MW exceeds available stack {total_capacity:,.0f} MW.")
+        st.dataframe(
+            df_zone[["name", "stack_type", "fuel", "srmc_eur_per_mwh", "available_mw", "cum_capacity_mw"]].tail(25),
+            use_container_width=True,
+        )
+        return
+
+    marginal = df_zone.iloc[pos]
+    clearing_price = float(marginal["srmc_eur_per_mwh"])
+    rank = pos + 1
+    util = demand_mw / total_capacity if total_capacity > 0 else 0.0
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Clearing SRMC (EUR/MWh)", f"{clearing_price:,.1f}")
+    m2.metric("Merit order rank", f"{rank:,} / {len(df_zone):,}")
+    m3.metric("Stack utilization", f"{util:.1%}")
+    m4.metric("Marginal unit", str(marginal.get("name", ""))[:40])
+
+    # Supply curve chart
+    x = df_zone["cum_capacity_mw"]
+    y = df_zone["srmc_eur_per_mwh"]
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=y,
+            mode="lines",
+            name="Merit order (SRMC)",
+            line=dict(shape="hv"),
+        )
+    )
+    fig.add_vline(x=demand_mw, line_dash="dot", line_color="#d62728")
+    fig.add_hline(y=clearing_price, line_dash="dot", line_color="#d62728")
+    fig.update_layout(
+        height=450,
+        xaxis_title="Cumulative available capacity (MW)",
+        yaxis_title="SRMC (EUR/MWh)",
+        margin=dict(l=10, r=10, t=10, b=10),
+        showlegend=False,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.write("Merit order around the marginal unit")
+    start = max(0, pos - 15)
+    end = min(len(df_zone), pos + 16)
+    view = df_zone.iloc[start:end].copy()
+    view.insert(0, "rank", range(start + 1, end + 1))
+    cols = [
+        c
+        for c in [
+            "rank",
+            "name",
+            "bidding_zone",
+            "fuel",
+            "stack_type",
+            "srmc_eur_per_mwh",
+            "available_mw",
+            "cum_capacity_mw",
+        ]
+        if c in view.columns
+    ]
+    st.dataframe(
+        view[cols].style.format(
+            {
+                "srmc_eur_per_mwh": "{:.1f}",
+                "available_mw": "{:,.1f}",
+                "cum_capacity_mw": "{:,.1f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+
 def plants_tab():
     st.subheader("Plant stack (OPSD conventional)")
     with st.spinner("Loading OPSD plant metadata..."):
@@ -788,16 +1029,24 @@ def plants_tab():
 def main():
     st.set_page_config(page_title="Power forecasts", layout="wide")
     st.title("Power forecasts dashboard")
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Demand forecasts", "Price forecasts", "Commodity prices", "Plants (OPSD)"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        [
+            "Demand forecasts",
+            "Price forecasts",
+            "Merit order rank",
+            "Commodity prices",
+            "Plants (OPSD)",
+        ]
     )
     with tab1:
         demand_tab()
     with tab2:
         price_tab()
     with tab3:
-        commodities_tab()
+        merit_order_rank_tab()
     with tab4:
+        commodities_tab()
+    with tab5:
         plants_tab()
 
 
