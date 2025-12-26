@@ -477,12 +477,39 @@ def _default_for(stack_type: str, field: str):
     return STACK_DEFAULTS.get(stack_type, {}).get(field)
 
 
+def _load_availability_overrides(
+    overrides: pd.DataFrame | Path | None,
+) -> Optional[pd.DataFrame]:
+    if overrides is None:
+        return None
+    if isinstance(overrides, (str, Path)):
+        overrides = pd.read_csv(overrides)
+    else:
+        overrides = overrides.copy()
+
+    if "availability_factor" not in overrides.columns:
+        raise ValueError("availability overrides require 'availability_factor' column")
+    if "eic_code" not in overrides.columns:
+        if "unit_id" in overrides.columns:
+            overrides = overrides.rename(columns={"unit_id": "eic_code"})
+        else:
+            raise ValueError("availability overrides require 'eic_code' column")
+
+    overrides["eic_code"] = (
+        overrides["eic_code"].astype(str).str.strip().replace({"": pd.NA})
+    )
+    overrides = overrides.dropna(subset=["eic_code"])
+    overrides = overrides.groupby("eic_code", as_index=False)["availability_factor"].mean()
+    return overrides
+
+
 def enrich_thermal_plants(
     raw: pd.DataFrame,
     countries: Iterable[str] | None = ("DE", "LU"),
     min_capacity_mw: float = 20.0,
     include_non_thermal: bool = False,
     co2_price_eur_per_t: float = DEFAULT_CO2_PRICE,
+    availability_overrides: pd.DataFrame | Path | None = None,
 ) -> pd.DataFrame:
     """
     Filter OPSD plants (optionally by country) and attach operational/economic defaults.
@@ -591,6 +618,15 @@ def enrich_thermal_plants(
     if "municipality" in df.columns:
         df["name"] = df["name"].fillna(df["municipality"])
     df["name"] = df["name"].fillna(df["technology"]).fillna(df["stack_type"])
+
+    overrides = _load_availability_overrides(availability_overrides)
+    if overrides is not None:
+        df = df.merge(overrides, on="eic_code", how="left", suffixes=("", "_override"))
+        df["availability_factor"] = df["availability_factor_override"].fillna(
+            df["availability_factor"]
+        )
+        df = df.drop(columns=["availability_factor_override"])
+
     return df[keep_cols].reset_index(drop=True)
 
 
@@ -607,6 +643,7 @@ class PlantStack:
         min_capacity_mw: float = 20.0,
         include_renewables: bool = True,
         co2_price_eur_per_t: float = DEFAULT_CO2_PRICE,
+        availability_overrides: pd.DataFrame | Path | None = None,
     ) -> "PlantStack":
         frames: List[pd.DataFrame] = [fetch_opsd_conventional(force=force)]
         if include_renewables:
@@ -618,6 +655,7 @@ class PlantStack:
             min_capacity_mw=min_capacity_mw,
             include_non_thermal=True,
             co2_price_eur_per_t=co2_price_eur_per_t,
+            availability_overrides=availability_overrides,
         )
         if bidding_zones:
             zones = _normalize_countries(bidding_zones)
