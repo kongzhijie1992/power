@@ -1,6 +1,6 @@
 # ENTSO-E API token (replace with your token)
 entsoe:
-  api_key: "YOUR_ENTSOE_API_KEY_HERE"
+  api_key: "17ad76be-f381-48af-88f1-c3e3731d7493"
   # preferred bidding zone
   default_area: DE_LU
   # active areas (GB/IE/NI excluded)
