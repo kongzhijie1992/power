@@ -20,6 +20,16 @@ from src.power_model.plants import PlantStack
 
 DATA_DIR = Path("data")
 MARKET_DIR = Path("data/market")
+TIMEZONE_OPTIONS = [
+    "UTC",
+    "Europe/Berlin",
+    "Europe/Paris",
+    "Europe/London",
+    "Europe/Madrid",
+    "Europe/Rome",
+    "Europe/Oslo",
+    "Europe/Zurich",
+]
 
 
 def _load_secrets_into_env():
@@ -117,7 +127,61 @@ def _apply_date_range(obj, start_date, end_date):
         return obj
     start_ts = pd.Timestamp(start_date)
     end_exclusive = pd.Timestamp(end_date) + pd.Timedelta(days=1)
+    if isinstance(obj.index, pd.DatetimeIndex) and obj.index.tz is not None:
+        start_ts = start_ts.tz_localize(obj.index.tz)
+        end_exclusive = end_exclusive.tz_localize(obj.index.tz)
     return obj[(obj.index >= start_ts) & (obj.index < end_exclusive)]
+
+
+def _convert_index_timezone(obj, tz_name: str):
+    if obj is None:
+        return None
+    if not hasattr(obj, "index"):
+        return obj
+    idx = pd.to_datetime(obj.index)
+    if isinstance(idx, pd.DatetimeIndex):
+        if idx.tz is None:
+            idx = idx.tz_localize("UTC")
+        try:
+            idx = idx.tz_convert(tz_name) if tz_name else idx.tz_convert("UTC")
+        except Exception:
+            idx = idx.tz_convert("UTC")
+        out = obj.copy()
+        out.index = idx
+        return out
+    return obj
+
+
+def _format_series_start(series: pd.Series) -> str:
+    if series is None:
+        return "n/a"
+    start = series.dropna().index.min()
+    if pd.isna(start):
+        return "n/a"
+    return pd.Timestamp(start).strftime("%Y-%m-%d %H:%M")
+
+
+def _format_timestamp_series(
+    series: pd.Series,
+    tz_name: str,
+    default: str = "n/a",
+    include_tz_label: bool = False,
+) -> pd.Series:
+    if series is None:
+        return pd.Series([], dtype="object")
+    parsed = pd.to_datetime(series, errors="coerce")
+    if parsed.empty:
+        return pd.Series([], dtype="object")
+    if parsed.dt.tz is None:
+        parsed = parsed.dt.tz_localize("UTC")
+    try:
+        parsed = parsed.dt.tz_convert(tz_name) if tz_name else parsed
+    except Exception:
+        parsed = parsed.dt.tz_convert("UTC")
+    out = parsed.dt.strftime("%Y-%m-%d %H:%M").fillna(default)
+    if include_tz_label and tz_name:
+        out = out.where(out == default, out + f" ({tz_name})")
+    return out
 
 
 def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
@@ -153,6 +217,11 @@ def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
         merged["actual_load"] = actual.reindex(idx_union)
     if "tso_forecast" in fc.columns:
         merged["tso_forecast"] = fc["tso_forecast"].reindex(idx_union)
+        if "tso_publication_time_utc" in fc.columns:
+            pub = pd.to_datetime(fc["tso_publication_time_utc"], errors="coerce")
+            if getattr(pub.dt, "tz", None) is not None:
+                pub = pub.dt.tz_convert("UTC").dt.tz_localize(None)
+            merged["tso_publication_time_utc"] = pub.reindex(idx_union)
     elif not tso.empty:
         merged["tso_forecast"] = tso.reindex(idx_union)
     if "corrected_mean" in fc.columns:
@@ -192,11 +261,21 @@ def demand_tab():
         options=areas,
         index=(areas.index("DE_LU") if "DE_LU" in areas else 0),
     )
+    timezone = st.selectbox(
+        "Timezone",
+        options=TIMEZONE_OPTIONS,
+        index=0,
+        key="demand_timezone",
+    )
 
     df, quantiles = load_demand_data(area)
     if df.empty:
         st.info("No demand data available for this zone.")
         return
+
+    df = _convert_index_timezone(df, timezone)
+    if quantiles is not None:
+        quantiles = _convert_index_timezone(quantiles, timezone)
 
     min_date = df.index.min().date()
     max_date = df.index.max().date()
@@ -221,14 +300,49 @@ def demand_tab():
     if quantiles is not None:
         quantiles = _apply_date_range(quantiles, start_date, end_date)
 
+    series_starts = {
+        "actual_load": _format_series_start(df.get("actual_load")),
+        "tso_forecast": _format_series_start(df.get("tso_forecast")),
+        "corrected_mean": _format_series_start(df.get("corrected_mean")),
+    }
+    quantile_start = (
+        _format_series_start(quantiles.get("corrected_q10"))
+        if quantiles is not None
+        else "n/a"
+    )
+
     fig = go.Figure()
     if "actual_load" in df:
+        earliest = series_starts["actual_load"]
         fig.add_trace(
             go.Scatter(
-                x=df.index, y=df["actual_load"], mode="lines", name="Actual load"
+                x=df.index,
+                y=df["actual_load"],
+                mode="lines",
+                name="Actual load",
+                customdata=[earliest] * len(df.index),
+                hovertemplate="%{y:,.0f} MW<br>Earliest: %{customdata}<extra>%{fullData.name}</extra>",
             )
         )
     if "tso_forecast" in df:
+        earliest = series_starts["tso_forecast"]
+        publication = df.get("tso_publication_time_utc")
+        if publication is not None:
+            pub_text = _format_timestamp_series(
+                publication.reindex(df.index),
+                timezone,
+                include_tz_label=True,
+            )
+            customdata = list(zip([earliest] * len(df.index), pub_text))
+            hovertemplate = (
+                "%{y:,.0f} MW<br>Earliest: %{customdata[0]}<br>"
+                "Updated at: %{customdata[1]}<extra>%{fullData.name}</extra>"
+            )
+        else:
+            customdata = [earliest] * len(df.index)
+            hovertemplate = (
+                "%{y:,.0f} MW<br>Earliest: %{customdata}<extra>%{fullData.name}</extra>"
+            )
         fig.add_trace(
             go.Scatter(
                 x=df.index,
@@ -236,9 +350,12 @@ def demand_tab():
                 mode="lines",
                 name="TSO forecast",
                 line=dict(dash="dot"),
+                customdata=customdata,
+                hovertemplate=hovertemplate,
             )
         )
     if "corrected_mean" in df:
+        earliest = series_starts["corrected_mean"]
         fig.add_trace(
             go.Scatter(
                 x=df.index,
@@ -246,6 +363,8 @@ def demand_tab():
                 mode="lines",
                 name="Model (corrected)",
                 line=dict(color="#d62728"),
+                customdata=[earliest] * len(df.index),
+                hovertemplate="%{y:,.0f} MW<br>Earliest: %{customdata}<extra>%{fullData.name}</extra>",
             )
         )
     if quantiles is not None and {"corrected_q10", "corrected_q90"}.issubset(
@@ -270,15 +389,54 @@ def demand_tab():
                 fill="tonexty",
                 fillcolor="rgba(214,39,40,0.15)",
                 name="Model q10–q90",
+                customdata=[quantile_start] * len(quantiles.index),
+                hovertemplate="%{y:,.0f} MW<br>Earliest: %{customdata}<extra>%{fullData.name}</extra>",
             )
         )
     fig.update_layout(
-        yaxis_title="MW", xaxis_title="Time", height=500, legend_orientation="h"
+        yaxis_title="MW",
+        xaxis_title="Time",
+        height=500,
+        legend_orientation="h",
+        hovermode="x unified",
+    )
+    fig.update_xaxes(
+        showspikes=True,
+        spikemode="across",
+        spikedash="dot",
+        spikesnap="cursor",
+        spikecolor="#666666",
+        spikethickness=1,
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    table = df.copy()
+    if quantiles is not None:
+        table = table.join(quantiles, how="left")
+    table = table.sort_index()
+    if "tso_publication_time_utc" in table.columns:
+        table["tso_publication_time_utc"] = _format_timestamp_series(
+            table["tso_publication_time_utc"], timezone
+        )
+    preferred_cols = [
+        "actual_load",
+        "tso_forecast",
+        "corrected_mean",
+        "corrected_q10",
+        "corrected_q50",
+        "corrected_q90",
+    ]
+    ordered = [c for c in preferred_cols if c in table.columns]
+    ordered += [c for c in table.columns if c not in ordered]
+    table = table[ordered]
+    table_out = table.reset_index()
+    if "index" in table_out.columns:
+        table_out = table_out.rename(columns={"index": "datetime"})
+    st.write("Data table")
+    st.dataframe(table_out, use_container_width=True)
+
     st.caption(
-        f"{area} | points: {len(df):,} | span: {df.index.min()} → {df.index.max()}"
+        f"{area} | timezone: {timezone} | points: {len(df):,} | span: {df.index.min()} → {df.index.max()}"
     )
 
 

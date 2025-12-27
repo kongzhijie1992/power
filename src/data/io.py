@@ -6,17 +6,7 @@ DATA_DIR = Path(__file__).parents[1] / ".." / "data"
 DATA_DIR = Path(DATA_DIR).resolve()
 
 
-def _read_series_from_path(path: Path) -> pd.Series:
-    """Load a series from CSV/Parquet, being flexible about column names."""
-    if path.suffix == ".parquet":
-        df = pd.read_parquet(path)
-    else:
-        df = pd.read_csv(path)
-    if "datetime" in df.columns:
-        df["datetime"] = pd.to_datetime(df["datetime"])
-        df = df.set_index("datetime")
-    df.index = pd.to_datetime(df.index)
-
+def _select_series_from_frame(df: pd.DataFrame) -> pd.Series:
     preferred = [
         "value",
         "actual_load",
@@ -33,6 +23,19 @@ def _read_series_from_path(path: Path) -> pd.Series:
     if len(numeric_cols) > 0:
         return df[numeric_cols[0]]
     return df.iloc[:, 0]
+
+
+def _read_series_from_path(path: Path) -> pd.Series:
+    """Load a series from CSV/Parquet, being flexible about column names."""
+    if path.suffix == ".parquet":
+        df = pd.read_parquet(path)
+    else:
+        df = pd.read_csv(path)
+    if "datetime" in df.columns:
+        df["datetime"] = pd.to_datetime(df["datetime"])
+        df = df.set_index("datetime")
+    df.index = pd.to_datetime(df.index)
+    return _select_series_from_frame(df)
 
 
 def ensure_data_dir():
@@ -142,6 +145,17 @@ def load_tso_forecast_series(area: str, prefer_parquet: bool = True) -> pd.Serie
       1) load_forecast.parquet
       2) load_forecast.csv
     """
+    df = load_tso_forecast_frame(area, prefer_parquet=prefer_parquet)
+    return _select_series_from_frame(df)
+
+
+def load_tso_forecast_frame(area: str, prefer_parquet: bool = True) -> pd.DataFrame:
+    """
+    Load the raw TSO forecast frame for an area (including any metadata columns).
+    Fallback order:
+      1) load_forecast.parquet
+      2) load_forecast.csv
+    """
     candidates = [
         DATA_DIR / area / "load_forecast.parquet",
         DATA_DIR / area / "load_forecast.csv",
@@ -152,6 +166,63 @@ def load_tso_forecast_series(area: str, prefer_parquet: bool = True) -> pd.Serie
     for path in candidates:
         if not path.exists():
             continue
-        series = _read_series_from_path(path)
-        return series
+        return _read_forecast_frame_from_path(path)
     raise FileNotFoundError(f"No TSO forecast file found for area {area} in {DATA_DIR}")
+
+
+def load_tso_forecast_publication(area: str, prefer_parquet: bool = True) -> pd.Series:
+    """Load publication timestamps for the TSO forecast, if present."""
+    candidates = [
+        DATA_DIR / area / "load_forecast.parquet",
+        DATA_DIR / area / "load_forecast.csv",
+    ]
+    if not prefer_parquet:
+        candidates = candidates[::-1]
+
+    preferred_cols = [
+        "tso_publication_time_utc",
+        "publication_time_utc",
+        "publication_time",
+        "created_datetime",
+    ]
+
+    for path in candidates:
+        if not path.exists():
+            continue
+        df = _read_forecast_frame_from_path(path)
+        for col in preferred_cols:
+            if col in df.columns:
+                series = pd.to_datetime(df[col], errors="coerce")
+                if series.notna().any():
+                    if getattr(series.dt, "tz", None) is not None:
+                        series = series.dt.tz_convert("UTC").dt.tz_localize(None)
+                    return series
+        for col in df.columns:
+            if "publication" in col:
+                series = pd.to_datetime(df[col], errors="coerce")
+                if series.notna().any():
+                    if getattr(series.dt, "tz", None) is not None:
+                        series = series.dt.tz_convert("UTC").dt.tz_localize(None)
+                    return series
+    return pd.Series(dtype="datetime64[ns]")
+
+
+def _read_forecast_frame_from_path(path: Path) -> pd.DataFrame:
+    if path.suffix == ".parquet":
+        df = pd.read_parquet(path)
+    else:
+        df = pd.read_csv(path)
+    if "datetime" in df.columns:
+        df["datetime"] = pd.to_datetime(df["datetime"])
+        df = df.set_index("datetime")
+    df.index = pd.to_datetime(df.index)
+    if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+        df.index = df.index.tz_convert("UTC").tz_localize(None)
+    for col in df.columns:
+        if "publication" in col:
+            parsed = pd.to_datetime(df[col], errors="coerce")
+            if parsed.notna().any():
+                df[col] = parsed
+                if getattr(parsed.dt, "tz", None) is not None:
+                    df[col] = df[col].dt.tz_convert("UTC").dt.tz_localize(None)
+    return df

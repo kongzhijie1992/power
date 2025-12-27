@@ -15,7 +15,11 @@ import logging
 import yaml
 import pandas as pd
 
-from src.data.io import load_demand_series, load_tso_forecast_series
+from src.data.io import (
+    load_demand_series,
+    load_tso_forecast_publication,
+    load_tso_forecast_series,
+)
 from src.features.weather_features import add_gfs_features
 from src.models.demand_forecast import (
     prepare_demand_features,
@@ -100,11 +104,13 @@ def main(area: str, days: int = 180):
     # Attempt bias-correction with TSO baseline
     try:
         tso_forecast = load_tso_forecast_series(area).sort_index()
+        tso_publication = load_tso_forecast_publication(area).sort_index()
     except FileNotFoundError:
         logger.warning(
             "No TSO forecast found for %s; falling back to direct model", area
         )
         tso_forecast = None
+        tso_publication = None
 
     if tso_forecast is None or tso_forecast.empty:
         forecasts, stats, weather_df, load_series = _train_direct_model(
@@ -160,6 +166,10 @@ def main(area: str, days: int = 180):
 
             forecasts = pd.DataFrame(index=tso_forecast.index)
             forecasts["tso_forecast"] = tso_forecast
+            if tso_publication is not None and not tso_publication.empty:
+                forecasts["tso_publication_time_utc"] = tso_publication.reindex(
+                    tso_forecast.index
+                )
             forecasts["corrected_mean"] = tso_forecast + error_preds_all["mean"]
             for col in error_preds_all.columns:
                 if col == "mean":
