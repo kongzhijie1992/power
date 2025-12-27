@@ -6,7 +6,7 @@ authors = ["ZHIJIE KONG <kylekongcs@users.noreply.github.com>"]
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = ">=3.12,<3.14"
 pandas = "^2.3.2"
 notebook = "^7.4.5"
 matplotlib = "^3.10.6"
@@ -27,6 +27,8 @@ pyarrow = "^22.0.0"
 pillow = "^12.0.0"
 holidays = "^0.58"
 streamlit = "^1.40.1"
+pyecharts = "^2.0.8"
+streamlit-echarts = "^0.4.0"
 python-dotenv = "^1.0.0"
 tvdatafeed = {git = "https://github.com/rongardF/tvdatafeed.git"}
 catboost = "^1.2.7"
