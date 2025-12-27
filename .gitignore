@@ -22,6 +22,7 @@ data/DE/*_seq*.csv
 __pycache__/
 *.log
 *.pyc
+*.parquet.bak-*
 *.pyo  
 *.swp
 *.swo   
