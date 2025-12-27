@@ -9,6 +9,7 @@ Usage:
 Outputs per area:
   - data/<AREA>/load_actual.csv
   - data/<AREA>/load_forecast.csv
+    (includes `tso_day_ahead_forecast` and `tso_publication_time_utc` when available)
 
 Notes:
   - Requires ENTSOE_API_TOKEN in environment or .env
@@ -18,7 +19,9 @@ import argparse
 import datetime as dt
 import os
 from pathlib import Path
+import re
 from typing import Iterable, Tuple
+import xml.etree.ElementTree as ET
 
 import pandas as pd
 
@@ -110,6 +113,104 @@ def _normalize_index(idx: pd.DatetimeIndex) -> pd.DatetimeIndex:
     return idx
 
 
+def _strip_ns(tag: str) -> str:
+    return tag.split("}", 1)[-1] if "}" in tag else tag
+
+
+def _find_first_text(elem: ET.Element, name: str) -> str | None:
+    for child in elem.iter():
+        if _strip_ns(child.tag) == name and child.text:
+            return child.text.strip()
+    return None
+
+
+_DURATION_RE = re.compile(
+    r"^P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
+)
+
+
+def _parse_duration(text: str) -> pd.Timedelta | None:
+    if not text:
+        return None
+    match = _DURATION_RE.match(text)
+    if not match:
+        return None
+    parts = {
+        key: int(val) if val else 0 for key, val in match.groupdict().items()
+    }
+    return pd.Timedelta(
+        days=parts["days"],
+        hours=parts["hours"],
+        minutes=parts["minutes"],
+        seconds=parts["seconds"],
+    )
+
+
+def _parse_timestamp(text: str) -> pd.Timestamp | None:
+    if not text:
+        return None
+    ts = pd.to_datetime(text, errors="coerce")
+    if pd.isna(ts):
+        return None
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    return ts
+
+
+def _extract_publication_times(xml_text: str) -> pd.Series:
+    root = ET.fromstring(xml_text)
+    root_created_text = _find_first_text(root, "createdDateTime")
+    root_created = _parse_timestamp(root_created_text) if root_created_text else pd.NaT
+
+    timestamps = []
+    publications = []
+
+    for ts in root.iter():
+        if _strip_ns(ts.tag) != "TimeSeries":
+            continue
+        ts_created_text = _find_first_text(ts, "createdDateTime")
+        ts_created = (
+            _parse_timestamp(ts_created_text) if ts_created_text else root_created
+        )
+        if pd.isna(ts_created):
+            continue
+        for period in ts.iter():
+            if _strip_ns(period.tag) != "Period":
+                continue
+            start_text = _find_first_text(period, "start")
+            resolution_text = _find_first_text(period, "resolution")
+            if not start_text or not resolution_text:
+                continue
+            step = _parse_duration(resolution_text)
+            if step is None or step <= pd.Timedelta(0):
+                continue
+            start_ts = _parse_timestamp(start_text)
+            if pd.isna(start_ts):
+                continue
+            for point in period.iter():
+                if _strip_ns(point.tag) != "Point":
+                    continue
+                pos_text = _find_first_text(point, "position")
+                if not pos_text:
+                    continue
+                try:
+                    position = int(pos_text)
+                except ValueError:
+                    continue
+                ts_point = start_ts + step * (position - 1)
+                timestamps.append(ts_point)
+                publications.append(ts_created)
+
+    if not timestamps:
+        return pd.Series(dtype="datetime64[ns]")
+
+    df = pd.DataFrame({"timestamp": timestamps, "publication_time": publications})
+    df = df.dropna(subset=["timestamp", "publication_time"])
+    if df.empty:
+        return pd.Series(dtype="datetime64[ns]")
+    return df.groupby("timestamp")["publication_time"].max().sort_index()
+
+
 def _read_ts_csv(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path, parse_dates=["datetime"])
     df = df.set_index("datetime")
@@ -197,6 +298,36 @@ def fetch_load_and_forecast(
     return actual, forecast
 
 
+def fetch_load_forecast_publication_times(
+    raw_client, area: str, start_date, end_date
+) -> pd.Series:
+    """Return per-timestamp publication times for day-ahead load forecasts (UTC-naive)."""
+    start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize("Europe/Brussels")
+    end_ts = (pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)).tz_localize(
+        "Europe/Brussels"
+    )
+
+    candidates = [area, ALT_CODES.get(area), AREA_MAP.get(area)]
+    last_error = None
+    for code in [c for c in candidates if c]:
+        try:
+            xml_text = raw_client.query_load_forecast(code, start=start_ts, end=end_ts)
+            if isinstance(xml_text, bytes):
+                xml_text = xml_text.decode("utf-8", errors="ignore")
+            if not xml_text:
+                continue
+            series = _extract_publication_times(str(xml_text))
+            if not series.empty:
+                return series
+        except Exception as e:
+            last_error = e
+            continue
+
+    if last_error:
+        raise last_error
+    return pd.Series(dtype="datetime64[ns]")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--area", default="DE_LU")
@@ -216,7 +347,7 @@ def main():
     if not api_token:
         raise SystemExit("ENTSOE_API_TOKEN not set (env or .env)")
     try:
-        from entsoe import EntsoePandasClient
+        from entsoe import EntsoePandasClient, EntsoeRawClient
     except ImportError:
         raise SystemExit(
             "entsoe-py not installed. Install with `pip install entsoe-py`."
@@ -233,6 +364,7 @@ def main():
     print(f"Planned calls per area: {len(ranges)} chunks (actual + forecast)")
 
     client = EntsoePandasClient(api_key=api_token)
+    raw_client = EntsoeRawClient(api_key=api_token)
 
     for area in areas:
         actual_chunks = []
@@ -242,7 +374,17 @@ def main():
             try:
                 act, fc = fetch_load_and_forecast(client, area, cs, ce)
                 actual_chunks.append(act)
-                forecast_chunks.append(fc)
+                forecast_chunk = fc.to_frame(name="tso_day_ahead_forecast")
+                try:
+                    pub = fetch_load_forecast_publication_times(
+                        raw_client, area, cs, ce
+                    )
+                    if pub is not None and not pub.empty:
+                        pub = pub.reindex(forecast_chunk.index)
+                        forecast_chunk["tso_publication_time_utc"] = pub
+                except Exception as e:
+                    print(f"  publication timestamps not available: {e}")
+                forecast_chunks.append(forecast_chunk)
                 print(f"  got actual {len(act)} pts, forecast {len(fc)} pts")
             except Exception as e:
                 print(f"  failed chunk {cs}->{ce} for {area}: {e}")
@@ -273,7 +415,7 @@ def main():
         area_dir.mkdir(parents=True, exist_ok=True)
 
         actual_df = actual.to_frame(name="actual_load")
-        forecast_df = forecast.to_frame(name="tso_day_ahead_forecast")
+        forecast_df = forecast.copy()
 
         actual_csv = area_dir / "load_actual.csv"
         forecast_csv = area_dir / "load_forecast.csv"

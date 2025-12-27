@@ -503,6 +503,67 @@ def _load_availability_overrides(
     return overrides
 
 
+def optimize_availability_factors(
+    plants: pd.DataFrame,
+    availability_history: pd.DataFrame,
+    id_columns: Iterable[str] = ("eic_code", "name"),
+    min_factor: float = 0.0,
+    max_factor: float = 1.0,
+    fallback: str = "stack_type",
+) -> pd.DataFrame:
+    """
+    Calibrate plant availability factors using historical availability data.
+
+    availability_history: wide dataframe with plant identifiers as columns and
+    availability factors (0-1) as values. Mean availability is used per plant.
+    """
+    if availability_history is None or availability_history.empty:
+        return plants.copy()
+
+    history = availability_history.apply(pd.to_numeric, errors="coerce")
+    availability_means = history.mean(skipna=True)
+    availability_means.index = availability_means.index.astype(str)
+
+    updated = plants.copy()
+    derived = pd.Series(float("nan"), index=updated.index, dtype="float")
+    id_cols = list(id_columns)
+
+    for idx, row in updated.iterrows():
+        factor = None
+        for col in id_cols:
+            if col not in updated.columns:
+                continue
+            key = row.get(col)
+            if pd.isna(key):
+                continue
+            key = str(key)
+            if key in availability_means.index and pd.notna(availability_means[key]):
+                factor = float(availability_means[key])
+                break
+        derived.loc[idx] = factor
+
+    if fallback == "stack_type" and "stack_type" in updated.columns:
+        stack_means = (
+            updated.assign(_derived=derived)
+            .groupby("stack_type")["_derived"]
+            .mean()
+        )
+        for idx, row in updated.iterrows():
+            if pd.isna(derived.loc[idx]):
+                stack = row.get("stack_type")
+                if pd.notna(stack) and stack in stack_means.index:
+                    derived.loc[idx] = stack_means.loc[stack]
+
+    if "availability_factor" in updated.columns:
+        derived = derived.fillna(
+            pd.to_numeric(updated["availability_factor"], errors="coerce")
+        )
+
+    derived = derived.clip(lower=min_factor, upper=max_factor)
+    updated["availability_factor"] = derived
+    return updated
+
+
 def enrich_thermal_plants(
     raw: pd.DataFrame,
     countries: Iterable[str] | None = ("DE", "LU"),
@@ -688,3 +749,21 @@ class PlantStack:
                 }
             )
         return blocks
+
+    def optimize_availability(
+        self,
+        availability_history: pd.DataFrame,
+        id_columns: Iterable[str] = ("eic_code", "name"),
+        min_factor: float = 0.0,
+        max_factor: float = 1.0,
+        fallback: str = "stack_type",
+    ) -> "PlantStack":
+        optimized = optimize_availability_factors(
+            self.plants,
+            availability_history=availability_history,
+            id_columns=id_columns,
+            min_factor=min_factor,
+            max_factor=max_factor,
+            fallback=fallback,
+        )
+        return PlantStack(plants=optimized)
