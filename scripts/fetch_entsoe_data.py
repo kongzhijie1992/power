@@ -19,6 +19,7 @@ Creates:
  - data/weather/<area>_weather.csv (hourly weather from Open-Meteo, no key required)
 """
 import argparse
+import concurrent.futures
 import os
 from pathlib import Path
 import datetime as dt
@@ -340,6 +341,12 @@ def main():
         action="store_true",
         help="Merge fetched data into existing CSVs instead of overwriting",
     )
+    p.add_argument(
+        "--threads",
+        type=int,
+        default=1,
+        help="Number of worker threads to fetch multiple areas in parallel",
+    )
     args = p.parse_args()
 
     api_token = os.getenv("ENTSOE_API_TOKEN")
@@ -410,7 +417,7 @@ def main():
         "EE": (59.4370, 24.7536),
     }
 
-    for area in areas:
+    def _process_area(area: str) -> None:
         print(f"\n===== AREA: {area} =====")
         data_dir = Path(__file__).parents[1] / "data" / area
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -478,6 +485,21 @@ def main():
             except Exception as e:
                 print(f"Weather download failed: {e}")
                 print("You can still run the pipeline using synthetic weather proxies.")
+
+    if args.threads <= 1 or len(areas) == 1:
+        for area in areas:
+            _process_area(area)
+    else:
+        workers = max(1, int(args.threads))
+        print(f"\nFetching {len(areas)} areas using {workers} thread(s).")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_process_area, area): area for area in areas}
+            for fut in concurrent.futures.as_completed(futures):
+                area = futures[fut]
+                try:
+                    fut.result()
+                except Exception as exc:
+                    print(f"⚠️  Area {area} failed: {exc}")
 
     print("\nDone.")
 
