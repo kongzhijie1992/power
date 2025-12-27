@@ -106,7 +106,7 @@ def _pyecharts_timeseries_line(
         xaxis_opts=opts.AxisOpts(
             type_="category",
             boundary_gap=False,
-            axislabel_opts=opts.LabelOpts(hide_overlap=True),
+            axislabel_opts=opts.AxisLabelOpts(hide_overlap=True),
         ),
         yaxis_opts=opts.AxisOpts(type_="value", name=yaxis_title),
     )
