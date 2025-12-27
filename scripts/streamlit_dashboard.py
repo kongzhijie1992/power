@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Unified Streamlit dashboard for demand and price forecasts."""
+import json
 import math
 import os
 import subprocess
@@ -12,14 +13,22 @@ import pandas as pd
 import streamlit as st
 from pyecharts import options as opts
 from pyecharts.charts import Line, Scatter
+from pyecharts.commons.utils import JsCode
 from streamlit_echarts import st_pyecharts
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data.io import load_demand_series, load_tso_forecast_series, load_price_series
+from src.data.io import (
+    load_demand_series,
+    load_tso_forecast_series,
+    load_tso_forecast_publication,
+    load_price_series,
+)
 from src.power_model.plants import PlantStack
+
+st.set_page_config(page_title="Power forecasts", layout="wide")
 
 DATA_DIR = Path("data")
 MARKET_DIR = Path("data/market")
@@ -75,29 +84,68 @@ def _format_index_as_strings(index: pd.Index) -> List[str]:
 
 def _pyecharts_timeseries_line(
     x: List[str],
-    series: List[tuple[str, List[Optional[float]], dict]],
+    series: List[tuple[str, List, dict]],
     yaxis_title: str,
     height_px: int = 500,
+    tooltip_formatter: Optional[JsCode] = None,
+    legend_exclude: Optional[List[str]] = None,
 ) -> Line:
-    chart = Line(init_opts=opts.InitOpts(height=f"{int(height_px)}px", width="100%"))
+    chart = Line(
+        init_opts=opts.InitOpts(
+            height=f"{int(height_px)}px",
+            width="100%",
+            animation_opts=opts.AnimationOpts(animation=False),
+        )
+    )
     chart.add_xaxis(x)
 
     for name, y, style in series:
+        style = style or {}
+        line_width = style.get("width", 1.2)
+        line_type = style.get("type_", "solid")
+        line_color = style.get("color")
+        line_opacity = style.get("line_opacity", 1.0)
+        if style.get("hide_line"):
+            line_width = 0
+            line_opacity = 0
+
+        line_opts = opts.LineStyleOpts(
+            width=line_width,
+            opacity=line_opacity,
+            type_=line_type,
+            color=line_color,
+        )
+        area_color = style.get("area_color")
+        area_opacity = style.get("area_opacity", 0.2)
+        area_opts = (
+            opts.AreaStyleOpts(opacity=area_opacity, color=area_color)
+            if area_color
+            else None
+        )
+        stack = style.get("stack")
+        is_symbol_show = style.get("is_symbol_show", False)
+
         chart.add_yaxis(
             name,
             y,
             is_connect_nones=True,
-            is_symbol_show=False,
+            is_symbol_show=is_symbol_show,
             symbol=None,
             is_hover_animation=False,
             sampling="lttb",
             label_opts=opts.LabelOpts(is_show=False),
-            linestyle_opts=opts.LineStyleOpts(**style),
+            linestyle_opts=line_opts,
+            areastyle_opts=area_opts,
+            stack=stack,
         )
 
+    tooltip_opts = opts.TooltipOpts(
+        trigger="axis",
+        axis_pointer_type="line",
+        formatter=tooltip_formatter,
+    )
     chart.set_global_opts(
-        animation_opts=opts.AnimationOpts(animation=False),
-        tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="line"),
+        tooltip_opts=tooltip_opts,
         legend_opts=opts.LegendOpts(pos_top="2%"),
         datazoom_opts=[
             opts.DataZoomOpts(type_="inside"),
@@ -106,11 +154,95 @@ def _pyecharts_timeseries_line(
         xaxis_opts=opts.AxisOpts(
             type_="category",
             boundary_gap=False,
-            axislabel_opts=opts.AxisLabelOpts(hide_overlap=True),
+            axislabel_opts=opts.LabelOpts(rotate=45, interval="auto", margin=14),
         ),
-        yaxis_opts=opts.AxisOpts(type_="value", name=yaxis_title),
+        yaxis_opts=opts.AxisOpts(type_="value", name=yaxis_title, min_="dataMin", max_="dataMax"),
     )
+    if legend_exclude and chart.options.get("legend"):
+        legend = chart.options["legend"][0]
+        data = legend.get("data", [])
+        legend["data"] = [name for name in data if name not in set(legend_exclude)]
     return chart
+
+
+def _render_chart(chart, height_px: int) -> None:
+    with st.spinner("Rendering chart..."):
+        st_pyecharts(chart, height=f"{int(height_px)}px", renderer="canvas")
+
+
+def _series_to_list(series: pd.Series) -> List[Optional[float]]:
+    return [None if pd.isna(v) else float(v) for v in series.tolist()]
+
+
+def _series_band_base_diff(
+    low: pd.Series, high: pd.Series
+) -> Tuple[List[Optional[float]], List[Optional[float]]]:
+    valid = low.notna() & high.notna()
+    base = low.where(valid)
+    diff = (high - low).where(valid)
+    return _series_to_list(base), _series_to_list(diff)
+
+
+def _demand_tooltip_formatter(
+    actual_updates: List[str],
+    tso_updates: List[str],
+    q10_vals: List[Optional[float]],
+    q90_vals: List[Optional[float]],
+) -> JsCode:
+    actual_json = json.dumps(actual_updates)
+    tso_json = json.dumps(tso_updates)
+    q10_json = json.dumps(q10_vals)
+    q90_json = json.dumps(q90_vals)
+    return JsCode(
+        f"""
+        function (params) {{
+          if (!params || params.length === 0) {{
+            return '';
+          }}
+          var axis = params[0].axisValue || '';
+          var idx = params[0].dataIndex || 0;
+          var actualUpdates = {actual_json};
+          var tsoUpdates = {tso_json};
+          var q10Vals = {q10_json};
+          var q90Vals = {q90_json};
+
+          function isNum(val) {{
+            return !(val === null || val === undefined || val === '' || isNaN(Number(val)));
+          }}
+
+          var lines = [axis];
+          for (var i = 0; i < params.length; i++) {{
+            var p = params[i];
+            if (p.seriesName === 'Model q10 base') {{
+              continue;
+            }}
+            var val = p.value;
+            if (Array.isArray(val) && val.length > 1) {{
+              val = val[1];
+            }}
+            var lineVal = (isNum(val) ? Number(val).toFixed(2) : 'n/a');
+            var line = p.marker + p.seriesName + ': ' + lineVal;
+            if (p.seriesName === 'Model q10–q90') {{
+              var lo = q10Vals[idx];
+              var hi = q90Vals[idx];
+              if (isNum(lo) && isNum(hi)) {{
+                line = p.marker + p.seriesName + ': ' + Number(lo).toFixed(2) + '–' + Number(hi).toFixed(2);
+              }}
+            }}
+            if (p.seriesName === 'Actual load') {{
+              var upd = actualUpdates[idx] || axis || 'n/a';
+              line += '<br/>Updated at: ' + upd;
+            }}
+            if (p.seriesName === 'TSO forecast') {{
+              var upd2 = tsoUpdates[idx] || axis || 'n/a';
+              line += '<br/>Updated at: ' + upd2;
+            }}
+            lines.push(line);
+          }}
+          return lines.join('<br/>');
+        }}
+        """
+    )
 
 
 def _load_secrets_into_env():
@@ -165,7 +297,6 @@ def _try_git_lfs_pull(include_path: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-@st.cache_data(show_spinner=False)
 def _list_areas_with_file(filename: str) -> List[str]:
     areas: List[str] = []
     for area_dir in DATA_DIR.iterdir():
@@ -176,7 +307,6 @@ def _list_areas_with_file(filename: str) -> List[str]:
     return sorted(areas)
 
 
-@st.cache_data(show_spinner=False)
 def _read_csv_indexed(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     if "datetime" in df.columns:
@@ -263,13 +393,17 @@ def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
     fc = _read_csv_indexed(fc_path)
 
     try:
-        actual = load_demand_series(area)
+        actual = load_demand_series(area, prefer_parquet=False)
     except FileNotFoundError:
         actual = pd.Series(dtype=float)
     try:
-        tso = load_tso_forecast_series(area)
+        tso = load_tso_forecast_series(area, prefer_parquet=False)
     except FileNotFoundError:
         tso = pd.Series(dtype=float)
+    try:
+        tso_pub = load_tso_forecast_publication(area, prefer_parquet=False)
+    except FileNotFoundError:
+        tso_pub = pd.Series(dtype="datetime64[ns]")
 
     quantiles = (
         fc[[c for c in fc.columns if c.startswith("corrected_q")]].copy()
@@ -289,13 +423,17 @@ def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
         merged["actual_load"] = actual.reindex(idx_union)
     if "tso_forecast" in fc.columns:
         merged["tso_forecast"] = fc["tso_forecast"].reindex(idx_union)
-        if "tso_publication_time_utc" in fc.columns:
+        if tso_pub is not None and not tso_pub.empty:
+            merged["tso_publication_time_utc"] = tso_pub.reindex(idx_union)
+        elif "tso_publication_time_utc" in fc.columns:
             pub = pd.to_datetime(fc["tso_publication_time_utc"], errors="coerce")
             if getattr(pub.dt, "tz", None) is not None:
                 pub = pub.dt.tz_convert("UTC").dt.tz_localize(None)
             merged["tso_publication_time_utc"] = pub.reindex(idx_union)
     elif not tso.empty:
         merged["tso_forecast"] = tso.reindex(idx_union)
+        if tso_pub is not None and not tso_pub.empty:
+            merged["tso_publication_time_utc"] = tso_pub.reindex(idx_union)
     if "corrected_mean" in fc.columns:
         merged["corrected_mean"] = fc["corrected_mean"].reindex(idx_union)
     elif "mean" in fc.columns:
@@ -326,19 +464,22 @@ def load_price_data(
 
 
 def demand_tab():
-    st.subheader("Demand forecasts")
+    # Keep tab header clean; the controls below act as the section header.
     areas = _list_areas_with_file("demand_forecast.csv")
-    area = st.selectbox(
-        "Bidding zone",
-        options=areas,
-        index=(areas.index("DE_LU") if "DE_LU" in areas else 0),
-    )
-    timezone = st.selectbox(
-        "Timezone",
-        options=TIMEZONE_OPTIONS,
-        index=0,
-        key="demand_timezone",
-    )
+    col_area, col_tz, col_range = st.columns([1.2, 1.0, 2.0])
+    with col_area:
+        area = st.selectbox(
+            "Bidding zone",
+            options=areas,
+            index=(areas.index("DE_LU") if "DE_LU" in areas else 0),
+        )
+    with col_tz:
+        timezone = st.selectbox(
+            "Timezone",
+            options=TIMEZONE_OPTIONS,
+            index=0,
+            key="demand_timezone",
+        )
 
     df, quantiles = load_demand_data(area)
     if df.empty:
@@ -352,14 +493,15 @@ def demand_tab():
     min_date = df.index.min().date()
     max_date = df.index.max().date()
     default_end = max_date
-    default_start = max(min_date, max_date - timedelta(days=90))
-    date_range = st.date_input(
-        "Date range (inclusive)",
-        value=(default_start, default_end),
-        min_value=min_date,
-        max_value=max_date,
-        key="demand_date_range",
-    )
+    default_start = max(min_date, max_date - timedelta(days=2))
+    with col_range:
+        date_range = st.date_input(
+            "Date range (inclusive)",
+            value=(default_start, default_end),
+            min_value=min_date,
+            max_value=max_date,
+            key="demand_date_range",
+        )
     if not isinstance(date_range, (tuple, list)) or len(date_range) != 2:
         st.info("Select a start and end date.")
         return
@@ -372,73 +514,95 @@ def demand_tab():
     if quantiles is not None:
         quantiles = _apply_date_range(quantiles, start_date, end_date)
 
-    with st.expander("Performance"):
-        fast_plot = st.checkbox(
-            "Fast plotting (downsample + lighter hover)",
-            value=True,
-            key="demand_fast_plot",
-        )
-        max_plot_points = int(
-            st.number_input(
-                "Max plot points (per series)",
-                min_value=1_000,
-                max_value=200_000,
-                value=25_000,
-                step=1_000,
-                key="demand_max_plot_points",
-            )
-        )
-        max_table_rows = int(
-            st.number_input(
-                "Max table rows shown",
-                min_value=500,
-                max_value=200_000,
-                value=10_000,
-                step=500,
-                key="demand_max_table_rows",
-            )
-        )
+    # Keep the demand tab responsive by default without exposing UI controls.
+    fast_plot = True
+    max_plot_points = 25_000
+    max_table_rows = 10_000
 
     plot_df = df.copy()
     if quantiles is not None:
         plot_df = plot_df.join(quantiles, how="left")
+    if "tso_publication_time_utc" in plot_df.columns:
+        plot_df["tso_pub_local"] = _format_timestamp_series(
+            plot_df["tso_publication_time_utc"], timezone, include_tz_label=True
+        )
     if fast_plot:
         plot_df = _downsample_indexed(plot_df, max_plot_points)
 
     x = _format_index_as_strings(plot_df.index)
-    series: List[tuple[str, List[Optional[float]], dict]] = []
-    if "actual_load" in plot_df:
-        series.append(("Actual load", plot_df["actual_load"].tolist(), {"width": 1.5}))
-    if "tso_forecast" in plot_df:
+    tz_label = f" ({timezone})" if timezone else ""
+    series: List[tuple[str, List, dict]] = []
+    actual_updates: List[str] = []
+    tso_updates: List[str] = []
+    q10_vals: List[Optional[float]] = []
+    q90_vals: List[Optional[float]] = []
+
+    if {"corrected_q10", "corrected_q90"}.issubset(plot_df.columns):
+        q10 = plot_df["corrected_q10"]
+        q90 = plot_df["corrected_q90"]
+        q10_vals = _series_to_list(q10)
+        q90_vals = _series_to_list(q90)
+        base, diff = _series_band_base_diff(q10, q90)
         series.append(
-            ("TSO forecast", plot_df["tso_forecast"].tolist(), {"type_": "dotted", "width": 1.2})
+            (
+                "Model q10 base",
+                base,
+                {"stack": "q_band", "hide_line": True, "line_opacity": 0},
+            )
+        )
+        series.append(
+            (
+                "Model q10–q90",
+                diff,
+                {
+                    "stack": "q_band",
+                    "hide_line": True,
+                    "area_color": "rgba(214,39,40,0.4)",
+                    "area_opacity": 0.4,
+                },
+            )
+        )
+    if "actual_load" in plot_df:
+        actual_updates = [f"{ts}{tz_label}" for ts in x]
+        series.append(
+            ("Actual load", _series_to_list(plot_df["actual_load"]), {"width": 1.5})
+        )
+    if "tso_forecast" in plot_df:
+        if "tso_pub_local" in plot_df:
+            tso_updates = plot_df["tso_pub_local"].fillna("n/a").astype(str).tolist()
+        else:
+            tso_updates = ["n/a"] * len(plot_df)
+        series.append(
+            (
+                "TSO forecast",
+                _series_to_list(plot_df["tso_forecast"]),
+                {"type_": "dotted", "width": 1.2},
+            )
         )
     if "corrected_mean" in plot_df:
         series.append(
             (
                 "Model (corrected)",
-                plot_df["corrected_mean"].tolist(),
-                {"color": "#d62728", "width": 1.5},
-            )
-        )
-    if {"corrected_q10", "corrected_q90"}.issubset(plot_df.columns):
-        series.append(
-            (
-                "Model q10",
-                plot_df["corrected_q10"].tolist(),
-                {"type_": "dashed", "width": 1.0},
-            )
-        )
-        series.append(
-            (
-                "Model q90",
-                plot_df["corrected_q90"].tolist(),
-                {"type_": "dashed", "width": 1.0},
+                _series_to_list(plot_df["corrected_mean"]),
+                {"color": "#d62728", "width": 1.5, "type_": "dashed"},
             )
         )
 
-    chart = _pyecharts_timeseries_line(x=x, series=series, yaxis_title="MW", height_px=500)
-    st_pyecharts(chart, height="500px", renderer="canvas")
+    tooltip_formatter = _demand_tooltip_formatter(
+        actual_updates=actual_updates,
+        tso_updates=tso_updates,
+        q10_vals=q10_vals,
+        q90_vals=q90_vals,
+    )
+    chart = _pyecharts_timeseries_line(
+        x=x,
+        series=series,
+        yaxis_title="MW",
+        height_px=500,
+        tooltip_formatter=tooltip_formatter,
+        legend_exclude=["Model q10 base"],
+    )
+    _render_chart(chart, 500)
 
     table = df.copy()
     if quantiles is not None:
@@ -573,23 +737,58 @@ def price_tab():
 
     x = _format_index_as_strings(merged.index)
     series: List[tuple[str, List[Optional[float]], dict]] = []
-    if "actual" in merged:
-        series.append(("Actual price", merged["actual"].tolist(), {"width": 1.5}))
-    if "hist_pred" in merged:
-        series.append(("Historical pred", merged["hist_pred"].tolist(), {"color": "#ff7f0e", "width": 1.2}))
-    if "fwd_mean" in merged:
-        series.append(("Forward pred", merged["fwd_mean"].tolist(), {"color": "#d62728", "width": 1.5}))
     if "fwd_q10" in merged and "fwd_q90" in merged:
-        series.append(("Forward q10", merged["fwd_q10"].tolist(), {"type_": "dashed", "width": 1.0}))
-        series.append(("Forward q90", merged["fwd_q90"].tolist(), {"type_": "dashed", "width": 1.0}))
+        q10 = merged["fwd_q10"]
+        q90 = merged["fwd_q90"]
+        base, diff = _series_band_base_diff(q10, q90)
+        series.append(
+            (
+                "Forward q10 base",
+                base,
+                {"stack": "q_band", "hide_line": True, "line_opacity": 0},
+            )
+        )
+        series.append(
+            (
+                "Forward q10–q90",
+                diff,
+                {
+                    "stack": "q_band",
+                    "hide_line": True,
+                    "area_color": "rgba(214,39,40,0.4)",
+                    "area_opacity": 0.4,
+                },
+            )
+        )
+    if "actual" in merged:
+        series.append(
+            ("Actual price", _series_to_list(merged["actual"]), {"width": 1.5})
+        )
+    if "hist_pred" in merged:
+        series.append(
+            (
+                "Historical pred",
+                _series_to_list(merged["hist_pred"]),
+                {"color": "#ff7f0e", "width": 1.2},
+            )
+        )
+    if "fwd_mean" in merged:
+        series.append(
+            (
+                "Forward pred",
+                _series_to_list(merged["fwd_mean"]),
+                {"color": "#d62728", "width": 1.5},
+            )
+        )
 
     chart = _pyecharts_timeseries_line(
         x=x,
         series=series,
         yaxis_title="EUR/MWh",
         height_px=500,
+        legend_exclude=["Forward q10 base"],
     )
-    st_pyecharts(chart, height="500px", renderer="canvas")
+    _render_chart(chart, 500)
 
     meta = [f"{area}"]
     if len(actual) > 0:
@@ -603,7 +802,6 @@ def price_tab():
     st.caption(" | ".join(meta))
 
 
-@st.cache_data(show_spinner=False)
 def _load_market_commodities() -> pd.DataFrame:
     candidates = [
         MARKET_DIR / "commodities.parquet",
@@ -629,7 +827,6 @@ def _load_market_commodities() -> pd.DataFrame:
     return pd.DataFrame()
 
 
-@st.cache_data(show_spinner=False)
 def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
     """
     Fetch commodity proxies from TradingView via tvdatafeed (daily settlement).
@@ -800,10 +997,9 @@ def commodities_tab():
     x = _format_index_as_strings(df_plot.index)
     series = [(c, df_plot[c].tolist(), {"width": 1.2}) for c in cols]
     chart = _pyecharts_timeseries_line(x=x, series=series, yaxis_title="", height_px=450)
-    st_pyecharts(chart, height="450px", renderer="canvas")
+    _render_chart(chart, 450)
 
 
-@st.cache_data(show_spinner=False)
 def load_all_plants() -> pd.DataFrame:
     """Download OPSD stack once (cached) so the UI stays responsive."""
     # Older deployments of PlantStack may not accept include_renewables; fall back gracefully.
@@ -953,7 +1149,6 @@ def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
     return filtered.reset_index(drop=True)
 
 
-@st.cache_data(show_spinner=False)
 def _load_demand_series_cached(area: str) -> pd.Series:
     s = load_demand_series(area)
     s = s.sort_index()
@@ -963,7 +1158,6 @@ def _load_demand_series_cached(area: str) -> pd.Series:
     return s
 
 
-@st.cache_data(show_spinner=False)
 def _list_areas_with_any_files(filenames: Tuple[str, ...]) -> List[str]:
     areas: List[str] = []
     for area_dir in DATA_DIR.iterdir():
@@ -1242,7 +1436,11 @@ def merit_order_rank_tab():
     x_vals = pd.to_numeric(x, errors="coerce").fillna(0.0).tolist()
     y_vals = pd.to_numeric(y, errors="coerce").fillna(0.0).tolist()
 
-    supply = Line(init_opts=opts.InitOpts(height="450px", width="100%"))
+    supply = Line(
+        init_opts=opts.InitOpts(
+            height="450px", width="100%", animation_opts=opts.AnimationOpts(animation=False)
+        )
+    )
     supply.add_xaxis(x_vals)
     supply.add_yaxis(
         "Merit order (SRMC)",
@@ -1262,14 +1460,13 @@ def merit_order_rank_tab():
         ),
     )
     supply.set_global_opts(
-        animation_opts=opts.AnimationOpts(animation=False),
         tooltip_opts=opts.TooltipOpts(trigger="axis"),
         legend_opts=opts.LegendOpts(is_show=False),
         datazoom_opts=[opts.DataZoomOpts(type_="inside")],
         xaxis_opts=opts.AxisOpts(type_="value", name="Cumulative available capacity (MW)"),
         yaxis_opts=opts.AxisOpts(type_="value", name="SRMC (EUR/MWh)"),
     )
-    st_pyecharts(supply, height="450px", renderer="canvas")
+    _render_chart(supply, 450)
 
     st.write("Merit order around the marginal unit")
     start = max(0, pos - 15)
@@ -1393,7 +1590,11 @@ def plants_tab():
                 continue
             points.append({"name": str(name)[:80], "value": [float(lon), float(lat)]})
 
-        scatter = Scatter(init_opts=opts.InitOpts(height="400px", width="100%"))
+        scatter = Scatter(
+            init_opts=opts.InitOpts(
+                height="400px", width="100%", animation_opts=opts.AnimationOpts(animation=False)
+            )
+        )
         scatter.add_xaxis([])
         scatter.add_yaxis(
             "Plants",
@@ -1406,14 +1607,13 @@ def plants_tab():
             scatter.options["series"][0]["large"] = True
             scatter.options["series"][0]["largeThreshold"] = 2000
         scatter.set_global_opts(
-            animation_opts=opts.AnimationOpts(animation=False),
             tooltip_opts=opts.TooltipOpts(formatter="{b}: {c}"),
             legend_opts=opts.LegendOpts(is_show=False),
             datazoom_opts=[opts.DataZoomOpts(type_="inside")],
             xaxis_opts=opts.AxisOpts(type_="value", name="Longitude"),
             yaxis_opts=opts.AxisOpts(type_="value", name="Latitude"),
         )
-        st_pyecharts(scatter, height="400px", renderer="canvas")
+        _render_chart(scatter, 400)
 
     st.write("Plant table")
     display_cols = [
@@ -1669,8 +1869,30 @@ def plant_status_tab():
 
 
 def main():
-    st.set_page_config(page_title="Power forecasts", layout="wide")
-    st.title("Power forecasts dashboard")
+    st.markdown(
+        """
+        <style>
+        .hero-title {
+          background-image: url("https://met.com/media/tknc3bvb/importance-of-electricity.jpg?width=1920&v=1dbd157654963b0&rmode=min&format=webp&quality=100");
+          background-size: cover;
+          background-position: center;
+          border-radius: 12px;
+          padding: 36px 28px;
+          margin: 6px 0 18px 0;
+        }
+        .hero-title__text {
+          color: #ffffff;
+          font-size: 2.0rem;
+          font-weight: 700;
+          text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+        }
+        </style>
+        <div class="hero-title">
+          <div class="hero-title__text">Power forecasts dashboard</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
             "Demand forecasts",
