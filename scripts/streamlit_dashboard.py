@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Unified Streamlit dashboard for demand and price forecasts."""
+import math
 import os
 import subprocess
 from datetime import timedelta
@@ -8,8 +9,10 @@ from typing import Optional, Tuple, List
 import sys
 
 import pandas as pd
-import plotly.graph_objs as go
 import streamlit as st
+from pyecharts import options as opts
+from pyecharts.charts import Line, Scatter
+from streamlit_echarts import st_pyecharts
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -30,6 +33,84 @@ TIMEZONE_OPTIONS = [
     "Europe/Oslo",
     "Europe/Zurich",
 ]
+
+
+def _downsample_indexed(obj, max_points: int):
+    if obj is None:
+        return None
+    if max_points is None or max_points <= 0:
+        return obj
+    try:
+        n = len(obj)
+    except TypeError:
+        return obj
+    if n <= max_points:
+        return obj
+    step = max(2, int(math.ceil(n / max_points)))
+    sampled = obj.iloc[::step]
+    try:
+        if len(sampled) > 0 and getattr(sampled, "index", None) is not None:
+            if sampled.index[-1] != obj.index[-1]:
+                sampled = pd.concat([sampled, obj.iloc[[-1]]])
+    except Exception:
+        pass
+    return sampled
+
+
+def _downsample_rows(df: pd.DataFrame, max_rows: int) -> pd.DataFrame:
+    if max_rows is None or max_rows <= 0:
+        return df
+    if df is None or df.empty:
+        return df
+    if len(df) <= max_rows:
+        return df
+    step = max(2, int(math.ceil(len(df) / max_rows)))
+    return df.iloc[::step].copy()
+
+
+def _format_index_as_strings(index: pd.Index) -> List[str]:
+    idx = pd.to_datetime(index)
+    return [pd.Timestamp(ts).strftime("%Y-%m-%d %H:%M") for ts in idx]
+
+
+def _pyecharts_timeseries_line(
+    x: List[str],
+    series: List[tuple[str, List[Optional[float]], dict]],
+    yaxis_title: str,
+    height_px: int = 500,
+) -> Line:
+    chart = Line(init_opts=opts.InitOpts(height=f"{int(height_px)}px", width="100%"))
+    chart.add_xaxis(x)
+
+    for name, y, style in series:
+        chart.add_yaxis(
+            name,
+            y,
+            is_connect_nones=True,
+            is_symbol_show=False,
+            symbol=None,
+            is_hover_animation=False,
+            sampling="lttb",
+            label_opts=opts.LabelOpts(is_show=False),
+            linestyle_opts=opts.LineStyleOpts(**style),
+        )
+
+    chart.set_global_opts(
+        animation_opts=opts.AnimationOpts(animation=False),
+        tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="line"),
+        legend_opts=opts.LegendOpts(pos_top="2%"),
+        datazoom_opts=[
+            opts.DataZoomOpts(type_="inside"),
+            opts.DataZoomOpts(type_="slider", pos_bottom="0%"),
+        ],
+        xaxis_opts=opts.AxisOpts(
+            type_="category",
+            boundary_gap=False,
+            axislabel_opts=opts.LabelOpts(hide_overlap=True),
+        ),
+        yaxis_opts=opts.AxisOpts(type_="value", name=yaxis_title),
+    )
+    return chart
 
 
 def _load_secrets_into_env():
@@ -150,15 +231,6 @@ def _convert_index_timezone(obj, tz_name: str):
         out.index = idx
         return out
     return obj
-
-
-def _format_series_start(series: pd.Series) -> str:
-    if series is None:
-        return "n/a"
-    start = series.dropna().index.min()
-    if pd.isna(start):
-        return "n/a"
-    return pd.Timestamp(start).strftime("%Y-%m-%d %H:%M")
 
 
 def _format_timestamp_series(
@@ -300,115 +372,73 @@ def demand_tab():
     if quantiles is not None:
         quantiles = _apply_date_range(quantiles, start_date, end_date)
 
-    series_starts = {
-        "actual_load": _format_series_start(df.get("actual_load")),
-        "tso_forecast": _format_series_start(df.get("tso_forecast")),
-        "corrected_mean": _format_series_start(df.get("corrected_mean")),
-    }
-    quantile_start = (
-        _format_series_start(quantiles.get("corrected_q10"))
-        if quantiles is not None
-        else "n/a"
-    )
+    with st.expander("Performance"):
+        fast_plot = st.checkbox(
+            "Fast plotting (downsample + lighter hover)",
+            value=True,
+            key="demand_fast_plot",
+        )
+        max_plot_points = int(
+            st.number_input(
+                "Max plot points (per series)",
+                min_value=1_000,
+                max_value=200_000,
+                value=25_000,
+                step=1_000,
+                key="demand_max_plot_points",
+            )
+        )
+        max_table_rows = int(
+            st.number_input(
+                "Max table rows shown",
+                min_value=500,
+                max_value=200_000,
+                value=10_000,
+                step=500,
+                key="demand_max_table_rows",
+            )
+        )
 
-    fig = go.Figure()
-    if "actual_load" in df:
-        earliest = series_starts["actual_load"]
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df["actual_load"],
-                mode="lines",
-                name="Actual load",
-                customdata=[earliest] * len(df.index),
-                hovertemplate="%{y:,.0f} MW<br>Earliest: %{customdata}<extra>%{fullData.name}</extra>",
+    plot_df = df.copy()
+    if quantiles is not None:
+        plot_df = plot_df.join(quantiles, how="left")
+    if fast_plot:
+        plot_df = _downsample_indexed(plot_df, max_plot_points)
+
+    x = _format_index_as_strings(plot_df.index)
+    series: List[tuple[str, List[Optional[float]], dict]] = []
+    if "actual_load" in plot_df:
+        series.append(("Actual load", plot_df["actual_load"].tolist(), {"width": 1.5}))
+    if "tso_forecast" in plot_df:
+        series.append(
+            ("TSO forecast", plot_df["tso_forecast"].tolist(), {"type_": "dotted", "width": 1.2})
+        )
+    if "corrected_mean" in plot_df:
+        series.append(
+            (
+                "Model (corrected)",
+                plot_df["corrected_mean"].tolist(),
+                {"color": "#d62728", "width": 1.5},
             )
         )
-    if "tso_forecast" in df:
-        earliest = series_starts["tso_forecast"]
-        publication = df.get("tso_publication_time_utc")
-        if publication is not None:
-            pub_text = _format_timestamp_series(
-                publication.reindex(df.index),
-                timezone,
-                include_tz_label=True,
-            )
-            customdata = list(zip([earliest] * len(df.index), pub_text))
-            hovertemplate = (
-                "%{y:,.0f} MW<br>Earliest: %{customdata[0]}<br>"
-                "Updated at: %{customdata[1]}<extra>%{fullData.name}</extra>"
-            )
-        else:
-            customdata = [earliest] * len(df.index)
-            hovertemplate = (
-                "%{y:,.0f} MW<br>Earliest: %{customdata}<extra>%{fullData.name}</extra>"
-            )
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df["tso_forecast"],
-                mode="lines",
-                name="TSO forecast",
-                line=dict(dash="dot"),
-                customdata=customdata,
-                hovertemplate=hovertemplate,
+    if {"corrected_q10", "corrected_q90"}.issubset(plot_df.columns):
+        series.append(
+            (
+                "Model q10",
+                plot_df["corrected_q10"].tolist(),
+                {"type_": "dashed", "width": 1.0},
             )
         )
-    if "corrected_mean" in df:
-        earliest = series_starts["corrected_mean"]
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df["corrected_mean"],
-                mode="lines",
-                name="Model (corrected)",
-                line=dict(color="#d62728"),
-                customdata=[earliest] * len(df.index),
-                hovertemplate="%{y:,.0f} MW<br>Earliest: %{customdata}<extra>%{fullData.name}</extra>",
+        series.append(
+            (
+                "Model q90",
+                plot_df["corrected_q90"].tolist(),
+                {"type_": "dashed", "width": 1.0},
             )
         )
-    if quantiles is not None and {"corrected_q10", "corrected_q90"}.issubset(
-        quantiles.columns
-    ):
-        fig.add_trace(
-            go.Scatter(
-                x=quantiles.index,
-                y=quantiles["corrected_q90"],
-                mode="lines",
-                line=dict(width=0),
-                showlegend=False,
-                hoverinfo="skip",
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=quantiles.index,
-                y=quantiles["corrected_q10"],
-                mode="lines",
-                line=dict(width=0),
-                fill="tonexty",
-                fillcolor="rgba(214,39,40,0.15)",
-                name="Model q10–q90",
-                customdata=[quantile_start] * len(quantiles.index),
-                hovertemplate="%{y:,.0f} MW<br>Earliest: %{customdata}<extra>%{fullData.name}</extra>",
-            )
-        )
-    fig.update_layout(
-        yaxis_title="MW",
-        xaxis_title="Time",
-        height=500,
-        legend_orientation="h",
-        hovermode="x unified",
-    )
-    fig.update_xaxes(
-        showspikes=True,
-        spikemode="across",
-        spikedash="dot",
-        spikesnap="cursor",
-        spikecolor="#666666",
-        spikethickness=1,
-    )
-    st.plotly_chart(fig, use_container_width=True)
+
+    chart = _pyecharts_timeseries_line(x=x, series=series, yaxis_title="MW", height_px=500)
+    st_pyecharts(chart, height="500px", renderer="canvas")
 
     table = df.copy()
     if quantiles is not None:
@@ -433,6 +463,9 @@ def demand_tab():
     if "index" in table_out.columns:
         table_out = table_out.rename(columns={"index": "datetime"})
     st.write("Data table")
+    if len(table_out) > max_table_rows:
+        st.caption(f"Showing last {max_table_rows:,} rows (of {len(table_out):,}) for performance.")
+        table_out = table_out.tail(max_table_rows)
     st.dataframe(table_out, use_container_width=True)
 
     st.caption(
@@ -490,59 +523,73 @@ def price_tab():
     forward = _apply_date_range(forward, start_date, end_date)
     history = _apply_date_range(history, start_date, end_date)
 
-    fig = go.Figure()
-    if len(actual) > 0:
-        fig.add_trace(
-            go.Scatter(
-                x=actual.index, y=actual.values, mode="lines", name="Actual price"
+    with st.expander("Performance"):
+        fast_plot = st.checkbox(
+            "Fast plotting (downsample)",
+            value=True,
+            key="price_fast_plot",
+        )
+        max_plot_points = int(
+            st.number_input(
+                "Max plot points (per series)",
+                min_value=1_000,
+                max_value=200_000,
+                value=25_000,
+                step=1_000,
+                key="price_max_plot_points",
             )
         )
-    if history is not None and "pred" in history:
-        fig.add_trace(
-            go.Scatter(
-                x=history.index,
-                y=history["pred"],
-                mode="lines",
-                name="Historical pred",
-                line=dict(color="#ff7f0e"),
-            )
-        )
-    if forward is not None and "mean" in forward:
-        fig.add_trace(
-            go.Scatter(
-                x=forward.index,
-                y=forward["mean"],
-                mode="lines",
-                name="Forward pred",
-                line=dict(color="#d62728"),
-            )
-        )
-    if forward is not None and {"q10", "q90"}.issubset(forward.columns):
-        fig.add_trace(
-            go.Scatter(
-                x=forward.index,
-                y=forward["q90"],
-                mode="lines",
-                line=dict(width=0),
-                showlegend=False,
-                hoverinfo="skip",
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=forward.index,
-                y=forward["q10"],
-                mode="lines",
-                line=dict(width=0),
-                fill="tonexty",
-                fillcolor="rgba(214,39,40,0.15)",
-                name="Forward q10–q90",
-            )
-        )
-    fig.update_layout(
-        yaxis_title="EUR/MWh", xaxis_title="Time", height=500, legend_orientation="h"
+
+    if fast_plot:
+        actual_plot = actual
+        forward_plot = forward
+        history_plot = history
+    else:
+        actual_plot, forward_plot, history_plot = actual, forward, history
+
+    idx_union = None
+    for obj in [actual_plot, history_plot, forward_plot]:
+        if obj is None or getattr(obj, "empty", True):
+            continue
+        idx_union = obj.index if idx_union is None else idx_union.union(obj.index)
+    if idx_union is None or len(idx_union) == 0:
+        st.info("No price data to plot.")
+        return
+    idx_union = idx_union.sort_values()
+
+    merged = pd.DataFrame(index=idx_union)
+    if len(actual_plot) > 0:
+        merged["actual"] = actual_plot.reindex(idx_union)
+    if history_plot is not None and "pred" in history_plot:
+        merged["hist_pred"] = history_plot["pred"].reindex(idx_union)
+    if forward_plot is not None and "mean" in forward_plot:
+        merged["fwd_mean"] = forward_plot["mean"].reindex(idx_union)
+    if forward_plot is not None and {"q10", "q90"}.issubset(forward_plot.columns):
+        merged["fwd_q10"] = forward_plot["q10"].reindex(idx_union)
+        merged["fwd_q90"] = forward_plot["q90"].reindex(idx_union)
+
+    if fast_plot:
+        merged = _downsample_indexed(merged, max_plot_points)
+
+    x = _format_index_as_strings(merged.index)
+    series: List[tuple[str, List[Optional[float]], dict]] = []
+    if "actual" in merged:
+        series.append(("Actual price", merged["actual"].tolist(), {"width": 1.5}))
+    if "hist_pred" in merged:
+        series.append(("Historical pred", merged["hist_pred"].tolist(), {"color": "#ff7f0e", "width": 1.2}))
+    if "fwd_mean" in merged:
+        series.append(("Forward pred", merged["fwd_mean"].tolist(), {"color": "#d62728", "width": 1.5}))
+    if "fwd_q10" in merged and "fwd_q90" in merged:
+        series.append(("Forward q10", merged["fwd_q10"].tolist(), {"type_": "dashed", "width": 1.0}))
+        series.append(("Forward q90", merged["fwd_q90"].tolist(), {"type_": "dashed", "width": 1.0}))
+
+    chart = _pyecharts_timeseries_line(
+        x=x,
+        series=series,
+        yaxis_title="EUR/MWh",
+        height_px=500,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st_pyecharts(chart, height="500px", renderer="canvas")
 
     meta = [f"{area}"]
     if len(actual) > 0:
@@ -732,11 +779,28 @@ def commodities_tab():
         st.info("Select at least one series.")
         return
 
-    fig = go.Figure()
-    for c in cols:
-        fig.add_trace(go.Scatter(x=df.index, y=df[c], mode="lines", name=c))
-    fig.update_layout(xaxis_title="Time", height=450, legend_orientation="h")
-    st.plotly_chart(fig, use_container_width=True)
+    with st.expander("Performance"):
+        fast_plot = st.checkbox(
+            "Fast plotting (downsample)",
+            value=True,
+            key="commodities_fast_plot",
+        )
+        max_plot_points = int(
+            st.number_input(
+                "Max plot points (per series)",
+                min_value=1_000,
+                max_value=200_000,
+                value=25_000,
+                step=1_000,
+                key="commodities_max_plot_points",
+            )
+        )
+
+    df_plot = _downsample_indexed(df, max_plot_points) if fast_plot else df
+    x = _format_index_as_strings(df_plot.index)
+    series = [(c, df_plot[c].tolist(), {"width": 1.2}) for c in cols]
+    chart = _pyecharts_timeseries_line(x=x, series=series, yaxis_title="", height_px=450)
+    st_pyecharts(chart, height="450px", renderer="canvas")
 
 
 @st.cache_data(show_spinner=False)
@@ -1175,26 +1239,37 @@ def merit_order_rank_tab():
     # Supply curve chart
     x = df_zone["cum_capacity_mw"]
     y = df_zone["srmc_eur_per_mwh"]
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=x,
-            y=y,
-            mode="lines",
-            name="Merit order (SRMC)",
-            line=dict(shape="hv"),
-        )
+    x_vals = pd.to_numeric(x, errors="coerce").fillna(0.0).tolist()
+    y_vals = pd.to_numeric(y, errors="coerce").fillna(0.0).tolist()
+
+    supply = Line(init_opts=opts.InitOpts(height="450px", width="100%"))
+    supply.add_xaxis(x_vals)
+    supply.add_yaxis(
+        "Merit order (SRMC)",
+        y_vals,
+        is_step=True,
+        is_symbol_show=False,
+        symbol=None,
+        is_hover_animation=False,
+        label_opts=opts.LabelOpts(is_show=False),
+        linestyle_opts=opts.LineStyleOpts(width=1.5),
+        markline_opts=opts.MarkLineOpts(
+            data=[
+                opts.MarkLineItem(x=demand_mw, name="Demand"),
+                opts.MarkLineItem(y=clearing_price, name="Clearing SRMC"),
+            ],
+            linestyle_opts=opts.LineStyleOpts(type_="dotted", color="#d62728", width=1.2),
+        ),
     )
-    fig.add_vline(x=demand_mw, line_dash="dot", line_color="#d62728")
-    fig.add_hline(y=clearing_price, line_dash="dot", line_color="#d62728")
-    fig.update_layout(
-        height=450,
-        xaxis_title="Cumulative available capacity (MW)",
-        yaxis_title="SRMC (EUR/MWh)",
-        margin=dict(l=10, r=10, t=10, b=10),
-        showlegend=False,
+    supply.set_global_opts(
+        animation_opts=opts.AnimationOpts(animation=False),
+        tooltip_opts=opts.TooltipOpts(trigger="axis"),
+        legend_opts=opts.LegendOpts(is_show=False),
+        datazoom_opts=[opts.DataZoomOpts(type_="inside")],
+        xaxis_opts=opts.AxisOpts(type_="value", name="Cumulative available capacity (MW)"),
+        yaxis_opts=opts.AxisOpts(type_="value", name="SRMC (EUR/MWh)"),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st_pyecharts(supply, height="450px", renderer="canvas")
 
     st.write("Merit order around the marginal unit")
     start = max(0, pos - 15)
@@ -1307,23 +1382,38 @@ def plants_tab():
 
     map_df = df.dropna(subset=["lat", "lon"])
     if not map_df.empty:
-        fig = go.Figure(
-            go.Scattergeo(
-                lon=map_df["lon"],
-                lat=map_df["lat"],
-                text=map_df["name"],
-                mode="markers",
-                marker=dict(size=6, color="red", opacity=0.7),
-            )
+        st.caption("Plant locations (lon/lat scatter; zoom with mouse wheel)")
+        map_df = _downsample_rows(map_df, 5000)
+        points = []
+        for row in map_df.itertuples(index=False):
+            name = getattr(row, "name", "")
+            lon = getattr(row, "lon", None)
+            lat = getattr(row, "lat", None)
+            if lon is None or lat is None or pd.isna(lon) or pd.isna(lat):
+                continue
+            points.append({"name": str(name)[:80], "value": [float(lon), float(lat)]})
+
+        scatter = Scatter(init_opts=opts.InitOpts(height="400px", width="100%"))
+        scatter.add_xaxis([])
+        scatter.add_yaxis(
+            "Plants",
+            points,
+            symbol_size=6,
+            label_opts=opts.LabelOpts(is_show=False),
+            itemstyle_opts=opts.ItemStyleOpts(color="red", opacity=0.7),
         )
-        fig.update_geos(
-            fitbounds="locations",
-            showcountries=True,
-            lataxis_showgrid=True,
-            lonaxis_showgrid=True,
+        if len(points) >= 2000 and scatter.options.get("series"):
+            scatter.options["series"][0]["large"] = True
+            scatter.options["series"][0]["largeThreshold"] = 2000
+        scatter.set_global_opts(
+            animation_opts=opts.AnimationOpts(animation=False),
+            tooltip_opts=opts.TooltipOpts(formatter="{b}: {c}"),
+            legend_opts=opts.LegendOpts(is_show=False),
+            datazoom_opts=[opts.DataZoomOpts(type_="inside")],
+            xaxis_opts=opts.AxisOpts(type_="value", name="Longitude"),
+            yaxis_opts=opts.AxisOpts(type_="value", name="Latitude"),
         )
-        fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0))
-        st.plotly_chart(fig, use_container_width=True)
+        st_pyecharts(scatter, height="400px", renderer="canvas")
 
     st.write("Plant table")
     display_cols = [
