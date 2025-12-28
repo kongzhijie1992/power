@@ -68,7 +68,7 @@ def _s3_config() -> Optional[Tuple[str, str]]:
     bucket = os.getenv("S3_BUCKET") or "zkong-power"
     if not bucket:
         return None
-    prefix = os.getenv("S3_PREFIX", "stack-model/data").strip("/")
+    prefix = (os.getenv("S3_PREFIX") or "stack-model/data").strip("/")
     return bucket, prefix
 
 
