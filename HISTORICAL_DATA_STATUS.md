@@ -3,9 +3,9 @@
 ## What's Done
 
 ✅ **Real multi-year dataset (API)**
-- Prices: 25,944 hourly rows in `data/DE_LU/day_ahead.csv` (2022-12-31 → 2025-12-16)
-- Weather: 25,872 hourly rows in `data/weather/DE_LU_weather.csv` (aligned to 2025-12-12)
-- Loads: 103,380 quarter-hour rows in `data/DE_LU/load_real.csv`
+- Prices: 25,944 hourly rows in `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv` (2022-12-31 → 2025-12-16)
+- Weather: 25,872 hourly rows in `s3://$S3_BUCKET/$S3_PREFIX/weather/DE_LU_weather.csv` (aligned to 2025-12-12)
+- Loads: 103,380 quarter-hour rows in `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/load_real.csv`
 - Multi-area coverage (30+ zones) with price + weather; many with load/TSO forecast
 
 ✅ **All Tests Passing**
@@ -20,9 +20,9 @@
 ## Current Data Snapshot
 
 ```
-Price:   data/DE_LU/day_ahead.csv      25,944 rows  2022-12-31 23:00 → 2025-12-16 22:00  (UTC, DST-safe)
-Weather: data/weather/DE_LU_weather.csv 25,872 rows 2022-12-31 00:00 → 2025-12-12 23:00 (UTC)
-Load:    data/DE_LU/load_real.csv       103,380 rows 2023-01-01 00:00 → 2025-12-12 22:45 (15-min)
+Price:   s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv        25,944 rows 2022-12-31 23:00 → 2025-12-16 22:00 (UTC, DST-safe)
+Weather: s3://$S3_BUCKET/$S3_PREFIX/weather/DE_LU_weather.csv  25,872 rows 2022-12-31 00:00 → 2025-12-12 23:00 (UTC)
+Load:    s3://$S3_BUCKET/$S3_PREFIX/DE_LU/load_real.csv        103,380 rows 2023-01-01 00:00 → 2025-12-12 22:45 (15-min)
 Tests:   87/87 passing (.venv\Scripts\pytest -q)
 ```
 
@@ -62,7 +62,7 @@ python -m src.models.backtest        # Backtesting harness
 | `get_historical_data.py` | CLI wrapper for GUI/API/sample | ✅ Working |
 | `scripts/summarize_datasets.py` | Cross-area coverage report | ✅ Working |
 | `check_data.py` | Quick validation | ✅ Working |
-| `data/DE_LU/day_ahead.csv` | Main price dataset | ✅ 25,944 rows |
+| `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv` | Main price dataset | ✅ 25,944 rows |
 
 ## Test Results (current dataset)
 

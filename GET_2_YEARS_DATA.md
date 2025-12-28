@@ -3,6 +3,10 @@
 ## Overview
 The project already has ~3 years of prices (2022-12-31 → 2025-12-16) plus matching weather. Use this guide only if you need to rebuild from GUI downloads or add new years.
 
+All runtime data is stored in S3. Paths like `data/<AREA>/...` are logical and
+resolve to `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/...` when the S3 env vars are set.
+Local `data/` is no longer used for runtime storage.
+
 ## What You'll Get (if you rebuild)
 - 2023 + 2024 (+ optional 2025) electricity prices
 - UTC timezone-aware, DST-safe
@@ -17,6 +21,7 @@ python scripts/fetch_entsoe_data.py ^
   --chunk-days 60 --merge-existing
 ```
 Result: Updates `data/DE_LU/day_ahead_real.csv` (raw) and `data/DE_LU/day_ahead.csv` (primary) with deduped timestamps; also fetches weather.
+These logical paths resolve to `s3://$S3_BUCKET/$S3_PREFIX/...` when S3 is enabled.
 
 ## GUI Steps (fallback)
 

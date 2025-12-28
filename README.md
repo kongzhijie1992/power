@@ -10,11 +10,17 @@ A production-oriented prototype for European power-stack analysis with:
 - Simplified dispatch and unit commitment (PuLP/CBC; upgradeable to commercial solvers)
 - ENTSO-E + Open-Meteo ingestion (chunked API, multi-area) with DST-safe UTC handling
 
+S3-Only Storage
+---------------
+All data lives in S3. Paths like `data/<AREA>/...` are logical and resolve to
+`s3://$S3_BUCKET/$S3_PREFIX/<AREA>/...` when the S3 env vars are set. The local
+`data/` folder is no longer used for runtime storage.
+
 Current Data & Tests
 --------------------
-- Prices: 25,944 rows (UTC) in `data/DE_LU/day_ahead.csv` covering 2022-12-31 → 2025-12-16
-- Weather: 25,872 rows in `data/weather/DE_LU_weather.csv` (aligned)
-- Loads: 103,380 quarter-hour rows in `data/DE_LU/load_real.csv`
+- Prices: 25,944 rows (UTC) in `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv` covering 2022-12-31 → 2025-12-16
+- Weather: 25,872 rows in `s3://$S3_BUCKET/$S3_PREFIX/weather/DE_LU_weather.csv` (aligned)
+- Loads: 103,380 quarter-hour rows in `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/load_real.csv`
 - Multi-area: 30+ bidding zones populated (prices + weather; many with load)
 - Tests: 87/87 passing (`.venv\Scripts\pytest -q`)
 - Quick checks: `python check_data.py`, `python scripts/summarize_datasets.py`
@@ -22,11 +28,11 @@ Current Data & Tests
 Power Stack Workflow
 --------------------
 1. **Data ingest**  
-   - Prices via ENTSO-E API (chunked) → `data/<AREA>/day_ahead_real.csv` (`scripts/fetch_entsoe_data.py`)  
+   - Prices via ENTSO-E API (chunked) → `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/day_ahead_real.csv` (`scripts/fetch_entsoe_data.py`)  
    - GUI fallback → `scripts/convert_entsoe.py` + `scripts/merge_years.py`  
-   - Persisted primary series → `data/<AREA>/day_ahead.csv`
+   - Persisted primary series → `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/day_ahead.csv`
 2. **Weather ingest**  
-   - Open-Meteo archive via fetch script (hourly wind/solar) → `data/weather/<AREA>_weather.csv`
+   - Open-Meteo archive via fetch script (hourly wind/solar) → `s3://$S3_BUCKET/$S3_PREFIX/weather/<AREA>_weather.csv`
 3. **Feature engineering**  
    - Price lags/rolling/calendar: `src/models/forecast.py`, `src/models/price_model.py`  
    - Weather features / proxies: `src/features/weather_features.py`  

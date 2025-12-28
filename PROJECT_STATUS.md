@@ -3,7 +3,7 @@
 ## Summary of Work Completed
 
 ### ✅ Data Management
-- **Current Data:** ~3.0 years of real ENTSO-E prices (25,944 rows, `data/DE_LU/day_ahead.csv`)
+- **Current Data:** ~3.0 years of real ENTSO-E prices (25,944 rows, `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv`)
 - **Weather & Load:** Matched weather (25,872 rows) + quarter-hour load (103,380 rows); multi-area coverage (30+ zones)
 - **Quality:** Zero missing values, UTC, DST-safe, deduplicated timestamps
 

@@ -1,7 +1,10 @@
 # Real Data Download / Refresh
 
 ## Overview
-You already have real ENTSO-E prices through 2025-12-16 (25,944 rows in `data/DE_LU/day_ahead.csv`) with matching weather and load. Use this guide to refresh via API or rebuild via GUI.
+You already have real ENTSO-E prices through 2025-12-16 (25,944 rows in `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv`) with matching weather and load. Use this guide to refresh via API or rebuild via GUI.
+
+All runtime data is stored in S3. Paths like `data/<AREA>/...` are logical and
+resolve to `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/...` when the S3 env vars are set.
 
 **Time Required:** 2–5 minutes (API) or ~15–20 minutes (GUI fallback)  
 **Difficulty:** Easy
@@ -16,8 +19,8 @@ python scripts/fetch_entsoe_data.py ^
 ```
 
 What happens:
-- Downloads price data per area into `data/<AREA>/day_ahead_real.csv`
-- Downloads weather into `data/weather/<AREA>_weather.csv`
+- Downloads price data per area into `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/day_ahead_real.csv`
+- Downloads weather into `s3://$S3_BUCKET/$S3_PREFIX/weather/<AREA>_weather.csv`
 - Dedupes timestamps and merges with existing files
 - Keeps everything UTC and DST-safe
 
