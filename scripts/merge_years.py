@@ -17,6 +17,7 @@ import sys
 
 from src.data.io import resolve_write_path, write_frame
 
+
 def download_instructions():
     """Print instructions for downloading from ENTSO-E GUI."""
     print(
@@ -92,7 +93,9 @@ def merge_csv_files(input_files, output_file, sequence=1):
         seq_col = next((c for c in df.columns if "Sequence" in c), None)
 
         if price_col is None:
-            raise ValueError(f"Could not find Day-ahead price column in {csv_path}")
+            raise ValueError(
+                f"Could not find Day-ahead price column in {csv_path}"
+            )
 
         # Filter by sequence
         df_seq = df.copy()
@@ -183,7 +186,9 @@ Examples:
     )
     p.add_argument("--input1", help="First CSV file (e.g., 2024 data)")
     p.add_argument("--input2", help="Second CSV file (e.g., 2023 data)")
-    p.add_argument("--input3", help="Third CSV file (optional, e.g., 2025 data)")
+    p.add_argument(
+        "--input3", help="Third CSV file (optional, e.g., 2025 data)"
+    )
     p.add_argument("--output", help="Output CSV file")
     p.add_argument(
         "--sequence",

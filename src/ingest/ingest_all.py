@@ -49,7 +49,9 @@ def fetch_and_persist_all(
         try:
             s = fetch_day_ahead_prices(client, area, start, end)
             # normalize to UTC naive
-            s.index = pd.to_datetime(s.index).tz_convert("UTC").tz_localize(None)
+            s.index = (
+                pd.to_datetime(s.index).tz_convert("UTC").tz_localize(None)
+            )
             path = save_series_csv(s, area)
             logger.info("Saved %s -> %s", area, path)
         except Exception as e:
@@ -59,7 +61,9 @@ def fetch_and_persist_all(
 def synthetic_area_series(area: str, days: int = 90) -> pd.Series:
     """Create a synthetic hourly price series with daily/weekly seasonality and noise."""
     end = (
-        pd.Timestamp.utcnow().replace(minute=0, second=0, microsecond=0).to_pydatetime()
+        pd.Timestamp.utcnow()
+        .replace(minute=0, second=0, microsecond=0)
+        .to_pydatetime()
     )
     periods = days * 24
     idx = pd.date_range(end=end, periods=periods, freq="h")

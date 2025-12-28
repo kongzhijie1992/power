@@ -7,7 +7,14 @@ Usage:
 """
 import pandas as pd
 
-from src.data.io import DATA_DIR, path_exists, read_frame, resolve_write_path, write_frame
+from src.data.io import (
+    DATA_DIR,
+    path_exists,
+    read_frame,
+    resolve_write_path,
+    write_frame,
+)
+
 AREAS = [
     "DE_LU",
     "FR",

@@ -78,19 +78,25 @@ class TestDailyUCAndBids(unittest.TestCase):
                 self.assertLessEqual(p, unit.p_max_mw * on + 1e-6)
 
         for unit in self.units:
-            for t_prev, t in zip(self.system.index[:-1], self.system.index[1:]):
+            for t_prev, t in zip(
+                self.system.index[:-1], self.system.index[1:]
+            ):
                 p_prev = float(uc.p.loc[t_prev, unit.unit_id])
                 p_now = float(uc.p.loc[t, unit.unit_id])
                 self.assertLessEqual(
-                    p_now - p_prev, unit.ramp_up_mw_per_h + unit.p_max_mw + 1e-6
+                    p_now - p_prev,
+                    unit.ramp_up_mw_per_h + unit.p_max_mw + 1e-6,
                 )
                 self.assertLessEqual(
-                    p_prev - p_now, unit.ramp_down_mw_per_h + unit.p_max_mw + 1e-6
+                    p_prev - p_now,
+                    unit.ramp_down_mw_per_h + unit.p_max_mw + 1e-6,
                 )
 
     def test_bids_include_commit_block_and_monotone_prices(self):
         uc = solve_uc_day(self.units, self.system, horizon_h=24)
-        blocks = build_blocks(self.units, uc, self.system, horizon_h=24, n_segments=3)
+        blocks = build_blocks(
+            self.units, uc, self.system, horizon_h=24, n_segments=3
+        )
 
         first_hour = self.system.index[0]
         coal_blocks = [
@@ -99,7 +105,9 @@ class TestDailyUCAndBids(unittest.TestCase):
         self.assertTrue(any(b.kind == "commit" for b in coal_blocks))
 
         coal_blocks_sorted = sorted(coal_blocks, key=lambda b: b.segment)
-        for b_prev, b_now in zip(coal_blocks_sorted[:-1], coal_blocks_sorted[1:]):
+        for b_prev, b_now in zip(
+            coal_blocks_sorted[:-1], coal_blocks_sorted[1:]
+        ):
             self.assertLessEqual(
                 b_prev.price_eur_per_mwh, b_now.price_eur_per_mwh + 1e-9
             )
@@ -113,7 +121,9 @@ class TestDailyUCAndBids(unittest.TestCase):
         run_h = int(uc.run_length_h.loc[first_hour, "coal_1"] or 0) or 1
         expected_adder = 2400.0 / (run_h * 50.0)
         commit = next(b for b in coal_blocks if b.kind == "commit")
-        self.assertGreaterEqual(commit.price_eur_per_mwh, prices[0] + expected_adder)
+        self.assertGreaterEqual(
+            commit.price_eur_per_mwh, prices[0] + expected_adder
+        )
 
 
 if __name__ == "__main__":

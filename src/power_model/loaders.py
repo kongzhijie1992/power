@@ -36,17 +36,24 @@ EUA_CONTRACT = TimeSeriesContract(
     "eua_price", ["eua_price"], freq="1h", allow_missing=True
 )
 OUTAGE_CONTRACT = TimeSeriesContract(
-    "availability_proxy", ["availability_factor"], freq="1h", allow_missing=True
+    "availability_proxy",
+    ["availability_factor"],
+    freq="1h",
+    allow_missing=True,
 )
 
 
-def load_parquet_contract(path: Path, contract: TimeSeriesContract) -> pd.DataFrame:
+def load_parquet_contract(
+    path: Path, contract: TimeSeriesContract
+) -> pd.DataFrame:
     """Load parquet (or CSV) and enforce contract."""
     if path.suffix.lower() == ".csv":
         df = pd.read_csv(path, parse_dates=["datetime"]).set_index("datetime")
     else:
         df = pd.read_parquet(path)
-        if "datetime" in df.columns and not isinstance(df.index, pd.DatetimeIndex):
+        if "datetime" in df.columns and not isinstance(
+            df.index, pd.DatetimeIndex
+        ):
             df = df.set_index("datetime")
     df = ensure_utc_index(df)
     return validate_contract(df, contract)

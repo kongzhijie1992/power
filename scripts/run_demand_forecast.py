@@ -72,7 +72,9 @@ def _train_direct_model(area: str, days: int, weather_path: str):
     logger.info("[direct] Demand model stats: %s", stats)
 
     future_index = pd.date_range(
-        load_series.index.max() + pd.Timedelta(hours=1), periods=24 * 2, freq="h"
+        load_series.index.max() + pd.Timedelta(hours=1),
+        periods=24 * 2,
+        freq="h",
     )
     combined_index = load_series.index.append(future_index)
     # Avoid backfilling with future values; fill missing with 0 as a neutral fallback.
@@ -128,7 +130,8 @@ def main(area: str, days: int = 180):
         aligned = _limit_by_days(aligned, days)
         if aligned.empty:
             logger.warning(
-                "Aligned load+forecast empty for %s; falling back to direct model", area
+                "Aligned load+forecast empty for %s; falling back to direct model",
+                area,
             )
             forecasts, stats, weather_df, load_series = _train_direct_model(
                 area, days, weather_path
@@ -147,15 +150,23 @@ def main(area: str, days: int = 180):
                 country=country_code,
             )
             # per-hour models with xgboost/lightgbm
-            models_by_hod, q_by_hod, stats = train_per_hod_models(X, y, use_xgb=True)
-            logger.info("[bias-correction per-HoD] Error model stats: %s", stats)
+            models_by_hod, q_by_hod, stats = train_per_hod_models(
+                X, y, use_xgb=True
+            )
+            logger.info(
+                "[bias-correction per-HoD] Error model stats: %s", stats
+            )
             if not models_by_hod:
                 # fallback to pooled model if too few samples per hour
                 logger.warning("Per-HoD model fallback to pooled for %s", area)
-                pooled_mean, pooled_q, stats = train_demand_models(X, y, use_xgb=True)
+                pooled_mean, pooled_q, stats = train_demand_models(
+                    X, y, use_xgb=True
+                )
                 models_by_hod = pooled_mean
                 q_by_hod = pooled_q
-                logger.info("[bias-correction pooled] Error model stats: %s", stats)
+                logger.info(
+                    "[bias-correction pooled] Error model stats: %s", stats
+                )
 
             # predict errors for the full TSO forecast history (so we get more than 1 day)
             X_all = build_future_error_features(
@@ -169,14 +180,18 @@ def main(area: str, days: int = 180):
             forecasts = pd.DataFrame(index=tso_forecast.index)
             forecasts["tso_forecast"] = tso_forecast
             if tso_publication is not None and not tso_publication.empty:
-                forecasts["tso_publication_time_utc"] = tso_publication.reindex(
-                    tso_forecast.index
+                forecasts["tso_publication_time_utc"] = (
+                    tso_publication.reindex(tso_forecast.index)
                 )
-            forecasts["corrected_mean"] = tso_forecast + error_preds_all["mean"]
+            forecasts["corrected_mean"] = (
+                tso_forecast + error_preds_all["mean"]
+            )
             for col in error_preds_all.columns:
                 if col == "mean":
                     continue
-                forecasts[f"corrected_{col}"] = tso_forecast + error_preds_all[col]
+                forecasts[f"corrected_{col}"] = (
+                    tso_forecast + error_preds_all[col]
+                )
             load_series = aligned["actual"]
 
     # Residual demand for the historical window (uses actual load if available)
@@ -195,7 +210,9 @@ def main(area: str, days: int = 180):
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--area", default="DE_LU")
-    p.add_argument("--areas", nargs="+", help="List of areas to run (overrides --area)")
+    p.add_argument(
+        "--areas", nargs="+", help="List of areas to run (overrides --area)"
+    )
     p.add_argument("--days", type=int, default=180)
     args = p.parse_args()
     areas = args.areas if args.areas else [args.area]

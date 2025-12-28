@@ -13,7 +13,9 @@ class PositionSizer:
     max_hourly_mw: float = 50.0
     vol_floor: float = 5.0
 
-    def _risk_scale(self, series: pd.Series, history: Optional[pd.Series]) -> float:
+    def _risk_scale(
+        self, series: pd.Series, history: Optional[pd.Series]
+    ) -> float:
         vol = float(series.std()) if not series.empty else self.vol_floor
         if history is not None and len(history) > 10:
             vol = float(history.tail(30).std())
@@ -75,12 +77,18 @@ class TradingEngine:
             raise ValueError("positions must contain baseload_mw and shape_mw")
         base_qty = positions["baseload_mw"].iloc[0]
         base_leg = base_qty * actual_price
-        base_leg.iloc[0] = base_leg.iloc[0] - self.transaction_cost * abs(base_qty)
+        base_leg.iloc[0] = base_leg.iloc[0] - self.transaction_cost * abs(
+            base_qty
+        )
         shape_leg = (
             positions["shape_mw"] * actual_price
             - self.transaction_cost * positions["shape_mw"].abs()
         )
         pnl = pd.DataFrame(
-            {"pnl": base_leg + shape_leg, "base_leg": base_leg, "shape_leg": shape_leg}
+            {
+                "pnl": base_leg + shape_leg,
+                "base_leg": base_leg,
+                "shape_leg": shape_leg,
+            }
         )
         return pnl

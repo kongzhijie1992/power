@@ -10,7 +10,9 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = ROOT / "scripts" / "streamlit_dashboard.py"
 
-spec = importlib.util.spec_from_file_location("streamlit_dashboard", SCRIPT_PATH)
+spec = importlib.util.spec_from_file_location(
+    "streamlit_dashboard", SCRIPT_PATH
+)
 dashboard = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(dashboard)
@@ -20,7 +22,10 @@ class TestDashboardTooltip(unittest.TestCase):
     """Ensure tooltip data is encoded in a way the JS formatter can read."""
 
     def test_series_helpers(self):
-        values = pd.Series([1.234, None, 2.345], index=pd.date_range("2024-01-01", periods=3, freq="h"))
+        values = pd.Series(
+            [1.234, None, 2.345],
+            index=pd.date_range("2024-01-01", periods=3, freq="h"),
+        )
         low = pd.Series([1.0, None, 2.0], index=values.index)
         high = pd.Series([2.0, None, 4.0], index=values.index)
 

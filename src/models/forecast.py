@@ -64,12 +64,18 @@ def train_lgbm(series: pd.Series, params: Optional[dict] = None):
     X = df.drop(columns=["y"])
     y = df["y"]
     dtrain = lgb.Dataset(X, label=y)
-    params = params or {"objective": "regression", "metric": "rmse", "verbosity": -1}
+    params = params or {
+        "objective": "regression",
+        "metric": "rmse",
+        "verbosity": -1,
+    }
     booster = lgb.train(params, dtrain, num_boost_round=100)
     return booster, X.columns.tolist()
 
 
-def predict_lgbm(model, feature_cols, history: pd.Series, days: int = 7) -> pd.Series:
+def predict_lgbm(
+    model, feature_cols, history: pd.Series, days: int = 7
+) -> pd.Series:
     # Rolling predict is left as a simple implementation using historical features where possible
     preds = seasonal_naive_forecast(history, days=days)
     return preds

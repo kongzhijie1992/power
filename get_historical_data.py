@@ -244,7 +244,9 @@ If tests fail:
     )
 
 
-def merge_csv_files(input_files, output_file="data/DE_LU/day_ahead.csv", sequence=1):
+def merge_csv_files(
+    input_files, output_file="data/DE_LU/day_ahead.csv", sequence=1
+):
     """Merge multiple ENTSO-E GUI CSV files."""
     print(f"\n📦 Merging {len(input_files)} files...")
 
@@ -261,7 +263,9 @@ def merge_csv_files(input_files, output_file="data/DE_LU/day_ahead.csv", sequenc
             df = pd.read_csv(path, dtype=str)
 
             # Find columns
-            mtu_col = next((c for c in df.columns if "MTU" in c), df.columns[0])
+            mtu_col = next(
+                (c for c in df.columns if "MTU" in c), df.columns[0]
+            )
             price_col = next((c for c in df.columns if "Day-ahead" in c), None)
             seq_col = next((c for c in df.columns if "Sequence" in c), None)
 
@@ -273,7 +277,9 @@ def merge_csv_files(input_files, output_file="data/DE_LU/day_ahead.csv", sequenc
             df_seq = df.copy()
             if seq_col is not None:
                 df_seq = df_seq[
-                    df_seq[seq_col].str.contains(f"Sequence {sequence}", na=False)
+                    df_seq[seq_col].str.contains(
+                        f"Sequence {sequence}", na=False
+                    )
                 ]
 
             # Parse timestamps
@@ -357,19 +363,32 @@ def create_sample_2year():
             hour_price = day_price + 30 * np.sin(2 * np.pi * hour / 24)
 
             for quarter in range(4):
-                ts = base + timedelta(days=day, hours=hour, minutes=quarter * 15)
+                ts = base + timedelta(
+                    days=day, hours=hour, minutes=quarter * 15
+                )
                 ts_end = ts + timedelta(minutes=15)
                 mtu = f'{ts.strftime("%d/%m/%Y %H:%M:%S")} - {ts_end.strftime("%d/%m/%Y %H:%M:%S")}'
 
                 price = hour_price + np.random.normal(0, 2)
                 rows.append(
-                    [mtu, "BZN|DE-LU", "Sequence Sequence 1", f"{price:.2f}", "", ""]
+                    [
+                        mtu,
+                        "BZN|DE-LU",
+                        "Sequence Sequence 1",
+                        f"{price:.2f}",
+                        "",
+                        "",
+                    ]
                 )
 
     # Write files (simulate 2024 and 2023)
     for rows_subset, year, month_range in [
         (rows[1:17521], 2024, (1, 366)),  # First 365 days = 2024
-        (rows[17521:], 2023, (1, 366)),  # Remaining 365 days = 2023 (renumbered)
+        (
+            rows[17521:],
+            2023,
+            (1, 366),
+        ),  # Remaining 365 days = 2023 (renumbered)
     ]:
         filename = f"GUI_{year}_sample.csv"
         with open(filename, "w", encoding="utf-8") as f:

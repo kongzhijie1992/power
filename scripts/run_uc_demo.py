@@ -17,7 +17,9 @@ def main():
     # synthetic 24h demand
     now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
     idx = pd.date_range(now, periods=24, freq="H")
-    demand = pd.Series(8000 + 2000 * np.sin(2 * np.pi * idx.hour / 24), index=idx)
+    demand = pd.Series(
+        8000 + 2000 * np.sin(2 * np.pi * idx.hour / 24), index=idx
+    )
 
     units = [
         {

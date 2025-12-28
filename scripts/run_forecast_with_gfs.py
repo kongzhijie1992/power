@@ -49,7 +49,9 @@ def load_or_create_data(area: str, days: int = 90) -> pd.Series:
     try:
         series = load_existing(area)
         if len(series) > 0:
-            logger.info("Loaded %d points for %s via legacy path", len(series), area)
+            logger.info(
+                "Loaded %d points for %s via legacy path", len(series), area
+            )
             return series
     except Exception:
         pass
@@ -90,7 +92,8 @@ def main(area: str = "DE_LU", lat: float = 52.5, lon: float = 13.4):
         prices, quantiles=(0.1, 0.5, 0.9), lat=lat, lon=lon
     )
     logger.info(
-        "Quantile models trained: %s", list(q_models.keys()) if q_models else "None"
+        "Quantile models trained: %s",
+        list(q_models.keys()) if q_models else "None",
     )
 
     # Walk-forward backtest

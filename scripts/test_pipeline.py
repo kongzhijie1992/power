@@ -44,7 +44,10 @@ print("\n[TEST 2] API Connectivity (via diagnose script)")
 diag_script = Path(__file__).parents[1] / "scripts" / "diagnose_entsoe.py"
 if diag_script.exists():
     result = subprocess.run(
-        [sys.executable, str(diag_script)], capture_output=True, text=True, timeout=30
+        [sys.executable, str(diag_script)],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     if (
         "Bad request parameters" in result.stdout
@@ -64,6 +67,7 @@ print("\n[TEST 3] Data Converter (GUI CSV → Hourly)")
 converter_script = Path(__file__).parents[1] / "scripts" / "convert_entsoe.py"
 seq1_csv = Path(__file__).parents[1] / "data" / "DE_LU" / "day_ahead_seq1.csv"
 seq2_csv = Path(__file__).parents[1] / "data" / "DE_LU" / "day_ahead_seq2.csv"
+
 
 def load_series(path: Path) -> pd.Series:
     resolved = resolve_data_path(path)
@@ -132,7 +136,10 @@ try:
     s1, s2 = s1.align(s2, join="inner")
 
     stats = pd.DataFrame(
-        {"Sequence 1 (SDAC)": s1.describe(), "Sequence 2 (EXAA)": s2.describe()}
+        {
+            "Sequence 1 (SDAC)": s1.describe(),
+            "Sequence 2 (EXAA)": s2.describe(),
+        }
     )
 
     print(stats.to_string())

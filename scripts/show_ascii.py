@@ -64,7 +64,9 @@ def ascii_preview(path, width=80):
             norm = arr_small * 0.0
         pixels = (norm * 255).astype(int).flatten().tolist()
     else:
-        print("Neither Pillow nor matplotlib available; cannot render ASCII preview.")
+        print(
+            "Neither Pillow nor matplotlib available; cannot render ASCII preview."
+        )
         return 1
 
     lines = []

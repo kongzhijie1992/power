@@ -108,21 +108,27 @@ def fetch_load_entsoe(
     client, area: str, start_date, end_date, forecast: bool = True
 ) -> pd.Series:
     """Fetch load via entsoe-py. Tries area code, alt code, then EIC."""
-    start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize("Europe/Brussels")
-    end_ts = (pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)).tz_localize(
+    start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize(
         "Europe/Brussels"
     )
+    end_ts = (
+        pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)
+    ).tz_localize("Europe/Brussels")
 
     candidates = [area, ALT_CODES.get(area), AREA_MAP.get(area)]
     last_error = None
     for code in [c for c in candidates if c]:
         try:
             if forecast and hasattr(client, "query_load_forecast"):
-                s = client.query_load_forecast(code, start=start_ts, end=end_ts)
+                s = client.query_load_forecast(
+                    code, start=start_ts, end=end_ts
+                )
             else:
                 s = client.query_load(code, start=start_ts, end=end_ts)
             if s is not None and len(s) > 0:
-                s.index = pd.to_datetime(s.index).tz_convert("UTC").tz_localize(None)
+                s.index = (
+                    pd.to_datetime(s.index).tz_convert("UTC").tz_localize(None)
+                )
                 return s
         except Exception as e:
             last_error = e
@@ -154,7 +160,9 @@ def _fetch_area_load(
                 client, AREA_MAP.get(area, area), cs, ce, forecast=True
             )
         except Exception as e:
-            print(f"  Forecast load failed for {area}: {e}. Trying actual load...")
+            print(
+                f"  Forecast load failed for {area}: {e}. Trying actual load..."
+            )
             s_chunk = fetch_load_entsoe(
                 client, AREA_MAP.get(area, area), cs, ce, forecast=False
             )
@@ -170,7 +178,9 @@ def _fetch_area_load(
     s = s[(s.index >= start_ts) & (s.index <= end_ts)]
 
     area_dir = DATA_DIR / area
-    out_csv = output_override if output_override else area_dir / "load_real.csv"
+    out_csv = (
+        output_override if output_override else area_dir / "load_real.csv"
+    )
     out_csv = resolve_write_path(out_csv)
     write_frame(s.to_frame("value"), out_csv, index_label="datetime")
     print(f"✅ Saved load to {out_csv} ({len(s):,} rows)")
@@ -180,11 +190,15 @@ def _fetch_area_load(
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--area", default="DE_LU")
-    p.add_argument("--areas", nargs="+", help="List of areas (overrides --area)")
+    p.add_argument(
+        "--areas", nargs="+", help="List of areas (overrides --area)"
+    )
     p.add_argument("--start-date", required=True)
     p.add_argument("--end-date", required=True)
     p.add_argument("--chunk-days", type=int, default=90)
-    p.add_argument("--workers", type=int, default=0, help="0 uses a small auto pool")
+    p.add_argument(
+        "--workers", type=int, default=0, help="0 uses a small auto pool"
+    )
     p.add_argument(
         "--executor", choices=["thread", "process"], default="thread"
     )
@@ -208,7 +222,9 @@ def main():
     print(f"Planned calls per area: {len(ranges)} chunks")
 
     if len(areas) == 1 and args.output:
-        _fetch_area_load(areas[0], api_token, ranges, output_override=args.output)
+        _fetch_area_load(
+            areas[0], api_token, ranges, output_override=args.output
+        )
         return
 
     workers = args.workers or min(4, len(areas))

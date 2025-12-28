@@ -53,8 +53,14 @@ def _sample_raw():
 
 def test_enrich_thermal_plants_filters_and_enriches():
     raw = _sample_raw()
-    enriched = enrich_thermal_plants(raw, countries=("DE", "LU"), min_capacity_mw=100)
-    assert set(enriched["name"]) == {"Gas CCGT A", "Coal Plant B", "Lignite Plant C"}
+    enriched = enrich_thermal_plants(
+        raw, countries=("DE", "LU"), min_capacity_mw=100
+    )
+    assert set(enriched["name"]) == {
+        "Gas CCGT A",
+        "Coal Plant B",
+        "Lignite Plant C",
+    }
     for col in [
         "capacity_mw",
         "efficiency",

@@ -34,7 +34,9 @@ def _run_one(area: str, api_key: str, lookback_hours: int):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--workers", type=int, default=0, help="0 uses a small auto pool")
+    p.add_argument(
+        "--workers", type=int, default=0, help="0 uses a small auto pool"
+    )
     p.add_argument(
         "--executor", choices=["thread", "process"], default="thread"
     )
@@ -51,7 +53,9 @@ def main():
     if workers <= 1 or len(areas) == 1:
         for a in areas:
             try:
-                incremental_update(a, api_key=api_key, lookback_hours=args.lookback_hours)
+                incremental_update(
+                    a, api_key=api_key, lookback_hours=args.lookback_hours
+                )
             except Exception as e:
                 logging.exception("Failed incremental update for %s: %s", a, e)
         return
@@ -76,7 +80,9 @@ def main():
             try:
                 fut.result()
             except Exception as e:
-                logging.exception("Failed incremental update for %s: %s", area, e)
+                logging.exception(
+                    "Failed incremental update for %s: %s", area, e
+                )
 
 
 if __name__ == "__main__":

@@ -43,12 +43,16 @@ def units_from_plants(
     if df.empty:
         return []
 
-    group_cols = [c for c in ["bidding_zone", "stack_type", "fuel"] if c in df.columns]
+    group_cols = [
+        c for c in ["bidding_zone", "stack_type", "fuel"] if c in df.columns
+    ]
     grouped = df.groupby(group_cols, dropna=False)
 
     units: List[Unit] = []
     for key, g in grouped:
-        cap = float(pd.to_numeric(g["p_max_mw"], errors="coerce").fillna(0.0).sum())
+        cap = float(
+            pd.to_numeric(g["p_max_mw"], errors="coerce").fillna(0.0).sum()
+        )
         if cap <= 0:
             continue
 
@@ -76,7 +80,9 @@ def units_from_plants(
 
         min_up = int(
             np.nanmax(
-                pd.to_numeric(g.get("min_up_hours"), errors="coerce").fillna(0.0).values
+                pd.to_numeric(g.get("min_up_hours"), errors="coerce")
+                .fillna(0.0)
+                .values
             )
         )
         min_down = int(
@@ -87,16 +93,22 @@ def units_from_plants(
             )
         )
         startup = float(
-            pd.to_numeric(g.get("startup_cost_eur"), errors="coerce").fillna(0.0).mean()
+            pd.to_numeric(g.get("startup_cost_eur"), errors="coerce")
+            .fillna(0.0)
+            .mean()
         )
 
         eff = float(
-            pd.to_numeric(g.get("efficiency"), errors="coerce").fillna(np.nan).mean()
+            pd.to_numeric(g.get("efficiency"), errors="coerce")
+            .fillna(np.nan)
+            .mean()
         )
         if np.isnan(eff):
             eff = 1.0
         co2_int = float(
-            pd.to_numeric(g.get("co2_intensity"), errors="coerce").fillna(0.0).mean()
+            pd.to_numeric(g.get("co2_intensity"), errors="coerce")
+            .fillna(0.0)
+            .mean()
         )
         vom = float(
             pd.to_numeric(
@@ -107,9 +119,15 @@ def units_from_plants(
         )
 
         fuel = str(g["fuel"].iloc[0]) if "fuel" in g.columns else "unknown"
-        stack = str(g["stack_type"].iloc[0]) if "stack_type" in g.columns else "fleet"
+        stack = (
+            str(g["stack_type"].iloc[0])
+            if "stack_type" in g.columns
+            else "fleet"
+        )
         zone_name = (
-            str(g["bidding_zone"].iloc[0]) if "bidding_zone" in g.columns else "Z"
+            str(g["bidding_zone"].iloc[0])
+            if "bidding_zone" in g.columns
+            else "Z"
         )
         base_id = f"{zone_name}:{stack}"
 
@@ -144,7 +162,12 @@ def run_daily_uc(
     *,
     horizon_h: int = 24,
     demand_col: str = "demand_mw",
-    renewable_cols: Iterable[str] = ("wind_mw", "solar_mw", "ror_mw", "must_run_mw"),
+    renewable_cols: Iterable[str] = (
+        "wind_mw",
+        "solar_mw",
+        "ror_mw",
+        "must_run_mw",
+    ),
     eua_col: str = "eua_price",
     fuel_price_cols: Optional[Dict[str, str]] = None,
     availability: Optional[pd.DataFrame] = None,

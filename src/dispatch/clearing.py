@@ -55,5 +55,7 @@ def clear_day(
     prices: Dict[pd.Timestamp, float] = {}
     for t, d in demand.items():
         hour_blocks = [b for b in blocks if b.hour == t]
-        prices[t] = clear_hour(hour_blocks, float(d)).clearing_price_eur_per_mwh
+        prices[t] = clear_hour(
+            hour_blocks, float(d)
+        ).clearing_price_eur_per_mwh
     return pd.Series(prices).sort_index()

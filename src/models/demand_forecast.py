@@ -32,7 +32,9 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
-def _calendar_features(index: pd.DatetimeIndex, country: str = None) -> pd.DataFrame:
+def _calendar_features(
+    index: pd.DatetimeIndex, country: str = None
+) -> pd.DataFrame:
     df = pd.DataFrame(index=index)
     df["hour"] = index.hour
     df["dow"] = index.dayofweek
@@ -45,7 +47,9 @@ def _calendar_features(index: pd.DatetimeIndex, country: str = None) -> pd.DataF
 
     if holidays and country:
         try:
-            hol = holidays.country_holidays(country, years=list(set(index.year)))
+            hol = holidays.country_holidays(
+                country, years=list(set(index.year))
+            )
         except Exception:
             hol = {}
         df["is_holiday"] = [1 if ts.date() in hol else 0 for ts in index]
@@ -75,7 +79,14 @@ def _augment_temperature_features(
     """
     w = weather.copy()
     temp_col = None
-    for cand in ["temperature", "temp", "t2m", "2t", "temp_c", "temperature_2m"]:
+    for cand in [
+        "temperature",
+        "temp",
+        "t2m",
+        "2t",
+        "temp_c",
+        "temperature_2m",
+    ]:
         if cand in w.columns:
             temp_col = cand
             break
@@ -171,7 +182,9 @@ def train_demand_models(
                 random_state=42,
             )
         else:
-            m = GradientBoostingRegressor(loss="quantile", alpha=q, random_state=42)
+            m = GradientBoostingRegressor(
+                loss="quantile", alpha=q, random_state=42
+            )
         m.fit(X_train, y_train)
         quantile_models[q] = m
         if not hasattr(m, "feature_list_"):
@@ -186,8 +199,13 @@ def train_demand_models(
 
 
 def train_per_hod_models(
-    X: pd.DataFrame, y: pd.Series, quantiles=(0.1, 0.5, 0.9), use_xgb: bool = False
-) -> Tuple[Dict[int, object], Dict[int, Dict[float, object]], Dict[str, float]]:
+    X: pd.DataFrame,
+    y: pd.Series,
+    quantiles=(0.1, 0.5, 0.9),
+    use_xgb: bool = False,
+) -> Tuple[
+    Dict[int, object], Dict[int, Dict[float, object]], Dict[str, float]
+]:
     """Train separate models per hour-of-day to capture horizon-specific patterns."""
     models = {}
     q_models: Dict[int, Dict[float, object]] = {}
@@ -199,7 +217,9 @@ def train_per_hod_models(
         y_h = y[mask]
         if len(X_h) < 150:
             continue
-        m, qs, _ = train_demand_models(X_h, y_h, quantiles=quantiles, use_xgb=use_xgb)
+        m, qs, _ = train_demand_models(
+            X_h, y_h, quantiles=quantiles, use_xgb=use_xgb
+        )
         models[hod] = m
         q_models[hod] = qs
         # quick validation for stats aggregation
@@ -236,14 +256,20 @@ def predict_demand(
                 continue
             X_sub = X_future.loc[mask]
             if hasattr(model, "feature_list_"):
-                X_sub = X_sub.reindex(model.feature_list_, axis=1, fill_value=0)
-            preds_dict.setdefault("mean", pd.Series(index=X_future.index, dtype=float))
+                X_sub = X_sub.reindex(
+                    model.feature_list_, axis=1, fill_value=0
+                )
+            preds_dict.setdefault(
+                "mean", pd.Series(index=X_future.index, dtype=float)
+            )
             preds_dict["mean"].loc[mask] = model.predict(X_sub)
             if quantile_models and hod in quantile_models:
                 for q, m in quantile_models[hod].items():
                     X_aligned = X_sub
                     if hasattr(m, "feature_list_"):
-                        X_aligned = X_sub.reindex(m.feature_list_, axis=1, fill_value=0)
+                        X_aligned = X_sub.reindex(
+                            m.feature_list_, axis=1, fill_value=0
+                        )
                     key = f"q{int(q*100)}"
                     preds_dict.setdefault(
                         key, pd.Series(index=X_future.index, dtype=float)
@@ -259,12 +285,16 @@ def predict_demand(
         for q, m in quantile_models.items():
             X_aligned = X_future
             if hasattr(m, "feature_list_"):
-                X_aligned = X_future.reindex(m.feature_list_, axis=1, fill_value=0)
+                X_aligned = X_future.reindex(
+                    m.feature_list_, axis=1, fill_value=0
+                )
             preds[f"q{int(q*100)}"] = m.predict(X_aligned)
     return pd.DataFrame(preds, index=X_future.index)
 
 
-def compute_residual_demand(load: pd.Series, weather: pd.DataFrame) -> pd.Series:
+def compute_residual_demand(
+    load: pd.Series, weather: pd.DataFrame
+) -> pd.Series:
     """Compute residual demand = load minus simple renewable proxies from weather.
 
     Uses rough heuristics:
@@ -302,17 +332,28 @@ def prepare_error_features(
 
     Returns (X, y, error_series) where y is the error aligned to X.
     """
-    df = pd.DataFrame({"actual": actual, "forecast": forecast}).dropna().sort_index()
+    df = (
+        pd.DataFrame({"actual": actual, "forecast": forecast})
+        .dropna()
+        .sort_index()
+    )
     error = df["actual"] - df["forecast"]
 
     feats = _calendar_features(df.index, country=country)
     if weather is not None:
-        w = _augment_temperature_features(weather).reindex(df.index).ffill().fillna(0)
+        w = (
+            _augment_temperature_features(weather)
+            .reindex(df.index)
+            .ffill()
+            .fillna(0)
+        )
         feats = pd.concat([feats, w], axis=1)
     feats["forecast"] = df["forecast"]
     # forecast lags/ramps
     feats["forecast_lag_1h"] = df["forecast"].shift(freq=pd.Timedelta(hours=1))
-    feats["forecast_lag_24h"] = df["forecast"].shift(freq=pd.Timedelta(hours=24))
+    feats["forecast_lag_24h"] = df["forecast"].shift(
+        freq=pd.Timedelta(hours=24)
+    )
     # Use backward-looking ramps (t - t-1) to avoid leakage from future values.
     feats["forecast_ramp_1h"] = df["forecast"].diff()
     feats["forecast_ramp_24h"] = df["forecast"] - df["forecast"].shift(
@@ -369,8 +410,8 @@ def build_future_error_features(
         hist_full = hist.reindex(combined_idx).ffill()
         for lag in add_lags:
             lag_delta = pd.Timedelta(hours=lag)
-            feats[f"error_lag_{lag}h"] = hist_full.shift(freq=lag_delta).reindex(
-                forecast.index
-            )
+            feats[f"error_lag_{lag}h"] = hist_full.shift(
+                freq=lag_delta
+            ).reindex(forecast.index)
     # Forward-fill only; never backfill time-series features with future values.
     return feats.ffill().fillna(0)

@@ -36,7 +36,9 @@ def main(area: str, synthetic: bool = True):
 
         cfg_path = Path(__file__).parents[1] / "src" / "config.yaml"
         if not cfg_path.exists():
-            cfg_path = Path(__file__).parents[1] / "src" / "config.yaml.example"
+            cfg_path = (
+                Path(__file__).parents[1] / "src" / "config.yaml.example"
+            )
         with open(cfg_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         api_key = (cfg.get("entsoe") or {}).get("api_key")
@@ -67,7 +69,9 @@ def main(area: str, synthetic: bool = True):
     # Create a synthetic generation mix for dispatch demo
     # columns: wind, solar, coal, gas, nuclear
     gen_mix = pd.DataFrame(index=prices.index)
-    gen_mix["wind"] = 3000 * (0.5 + 0.5 * np.sin(2 * np.pi * prices.index.hour / 24))
+    gen_mix["wind"] = 3000 * (
+        0.5 + 0.5 * np.sin(2 * np.pi * prices.index.hour / 24)
+    )
     gen_mix["solar"] = 2000 * (
         np.clip(np.cos(2 * np.pi * (prices.index.hour - 6) / 24), 0, 1)
     )

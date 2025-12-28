@@ -105,23 +105,41 @@ def sample_demand_24h():
 @pytest.fixture
 def sample_gen_mix():
     """Fixture: Sample zonal generation mix."""
-    return {"wind": 80, "solar": 40, "nuclear": 60, "hydro": 30, "gas": 100, "coal": 50}
+    return {
+        "wind": 80,
+        "solar": 40,
+        "nuclear": 60,
+        "hydro": 30,
+        "gas": 100,
+        "coal": 50,
+    }
 
 
 @pytest.fixture
 def sample_cost_map():
     """Fixture: Sample cost map by fuel type."""
-    return {"wind": 0, "solar": 5, "hydro": 15, "nuclear": 10, "coal": 25, "gas": 45}
+    return {
+        "wind": 0,
+        "solar": 5,
+        "hydro": 15,
+        "nuclear": 10,
+        "coal": 25,
+        "gas": 45,
+    }
 
 
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line("markers", "unit: mark test as a unit test")
-    config.addinivalue_line("markers", "integration: mark test as an integration test")
+    config.addinivalue_line(
+        "markers", "integration: mark test as an integration test"
+    )
     config.addinivalue_line(
         "markers", "slow: mark test as slow (deselect with '-m \"not slow\"')"
     )
-    config.addinivalue_line("markers", "edge_case: mark test as an edge case test")
+    config.addinivalue_line(
+        "markers", "edge_case: mark test as an edge case test"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -139,5 +157,9 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.slow)
 
         # Mark edge case tests
-        if "edge" in item.nodeid or "error" in item.nodeid or "corrupt" in item.nodeid:
+        if (
+            "edge" in item.nodeid
+            or "error" in item.nodeid
+            or "corrupt" in item.nodeid
+        ):
             item.add_marker(pytest.mark.edge_case)

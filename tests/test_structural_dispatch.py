@@ -4,7 +4,11 @@ from src.power_model.structural import StructuralStackModel
 
 
 def make_row(
-    load: float, wind: float, solar: float, gas: float = 40.0, eua: float = 60.0
+    load: float,
+    wind: float,
+    solar: float,
+    gas: float = 40.0,
+    eua: float = 60.0,
 ):
     return pd.Series(
         {

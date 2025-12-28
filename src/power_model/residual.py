@@ -23,7 +23,11 @@ class ResidualModel:
         }
     )
     quantile_params: Dict = field(
-        default_factory=lambda: {"iterations": 200, "depth": 6, "learning_rate": 0.05}
+        default_factory=lambda: {
+            "iterations": 200,
+            "depth": 6,
+            "learning_rate": 0.05,
+        }
     )
 
     def __post_init__(self):
@@ -44,7 +48,9 @@ class ResidualModel:
     ) -> "ResidualModel":
         X = df[self.feature_cols]
         y = self._residuals(df, target_col, structural_col)
-        self.point_model = CatBoostRegressor(**self.point_params, verbose=False)
+        self.point_model = CatBoostRegressor(
+            **self.point_params, verbose=False
+        )
         self.point_model.fit(X, y)
         self.quantile_models = {}
         for q in self.quantiles:

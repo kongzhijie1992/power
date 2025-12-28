@@ -10,7 +10,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = ROOT / "scripts" / "streamlit_dashboard.py"
 
-spec = importlib.util.spec_from_file_location("streamlit_dashboard", SCRIPT_PATH)
+spec = importlib.util.spec_from_file_location(
+    "streamlit_dashboard", SCRIPT_PATH
+)
 dashboard = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(dashboard)
@@ -28,7 +30,10 @@ def test_downsample_indexed_includes_last():
 
 
 def test_downsample_rows_reduces_and_preserves_order():
-    df = pd.DataFrame({"v": range(10)}, index=pd.date_range("2024-01-01", periods=10, freq="h"))
+    df = pd.DataFrame(
+        {"v": range(10)},
+        index=pd.date_range("2024-01-01", periods=10, freq="h"),
+    )
 
     out = dashboard._downsample_rows(df, max_rows=4)
 
@@ -112,16 +117,30 @@ def test_load_demand_data_merges_quantiles(monkeypatch):
     actual = pd.Series([99.0, 100.0], index=idx[1:])
     tso = pd.Series([10.0, 11.0, 12.0], index=idx)
     pub = pd.Series(
-        [pd.Timestamp("2024-01-01 00:30"), pd.Timestamp("2024-01-01 01:30"), pd.Timestamp("2024-01-01 02:30")],
+        [
+            pd.Timestamp("2024-01-01 00:30"),
+            pd.Timestamp("2024-01-01 01:30"),
+            pd.Timestamp("2024-01-01 02:30"),
+        ],
         index=idx,
     )
 
     monkeypatch.setattr(dashboard, "read_frame", lambda path: fc.copy())
     monkeypatch.setattr(dashboard, "path_exists", lambda path: True)
-    monkeypatch.setattr(dashboard, "load_demand_series", lambda area, prefer_parquet=False: actual)
-    monkeypatch.setattr(dashboard, "load_tso_forecast_series", lambda area, prefer_parquet=False: tso)
     monkeypatch.setattr(
-        dashboard, "load_tso_forecast_publication", lambda area, prefer_parquet=False: pub
+        dashboard,
+        "load_demand_series",
+        lambda area, prefer_parquet=False: actual,
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "load_tso_forecast_series",
+        lambda area, prefer_parquet=False: tso,
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "load_tso_forecast_publication",
+        lambda area, prefer_parquet=False: pub,
     )
 
     merged, quantiles = dashboard.load_demand_data("DE_LU")
@@ -161,4 +180,3 @@ def test_load_price_data_reads_forecast_and_history(monkeypatch):
     assert forward_out is not None
     assert history_out is not None
     assert "pred" in history_out.columns
-

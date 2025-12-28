@@ -38,7 +38,10 @@ class TestWalkForwardBacktest(unittest.TestCase):
     def test_walk_forward_backtest_custom_window(self):
         """Test backtest with custom train/horizon windows."""
         results = walk_forward_backtest(
-            self.prices, seasonal_naive_forecast, train_window_days=30, horizon_days=7
+            self.prices,
+            seasonal_naive_forecast,
+            train_window_days=30,
+            horizon_days=7,
         )
 
         self.assertGreater(len(results), 0)
@@ -46,7 +49,10 @@ class TestWalkForwardBacktest(unittest.TestCase):
     def test_walk_forward_backtest_rmse_realistic(self):
         """Test that RMSE values are realistic (positive, not infinite)."""
         results = walk_forward_backtest(
-            self.prices, seasonal_naive_forecast, train_window_days=30, horizon_days=5
+            self.prices,
+            seasonal_naive_forecast,
+            train_window_days=30,
+            horizon_days=5,
         )
 
         # All RMSE values should be positive and finite
@@ -94,10 +100,16 @@ class TestBacktestEdgeCases(unittest.TestCase):
         prices = synthetic_area_series("DE", days=90)
 
         results1 = walk_forward_backtest(
-            prices, seasonal_naive_forecast, train_window_days=30, horizon_days=5
+            prices,
+            seasonal_naive_forecast,
+            train_window_days=30,
+            horizon_days=5,
         )
         results2 = walk_forward_backtest(
-            prices, seasonal_naive_forecast, train_window_days=30, horizon_days=5
+            prices,
+            seasonal_naive_forecast,
+            train_window_days=30,
+            horizon_days=5,
         )
 
         # Should produce identical results
@@ -108,7 +120,10 @@ class TestBacktestEdgeCases(unittest.TestCase):
         prices = synthetic_area_series("DE", days=365)
 
         results = walk_forward_backtest(
-            prices, seasonal_naive_forecast, train_window_days=90, horizon_days=14
+            prices,
+            seasonal_naive_forecast,
+            train_window_days=90,
+            horizon_days=14,
         )
 
         # Should complete and have multiple windows

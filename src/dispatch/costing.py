@@ -49,7 +49,9 @@ def start_cost(unit: Unit, offline_hours: float) -> float:
     return float(unit.startup_cost_eur or 0.0)
 
 
-def _default_segment_efficiencies(base_eff: float, n_segments: int) -> List[float]:
+def _default_segment_efficiencies(
+    base_eff: float, n_segments: int
+) -> List[float]:
     multipliers = [1.02, 1.0, 0.98, 0.95]
     vals = []
     for i in range(n_segments + 1):
@@ -97,7 +99,9 @@ def compute_segment_prices(
     return prices
 
 
-def coerce_hours_index(df: pd.DataFrame, horizon_h: int = 24) -> pd.DatetimeIndex:
+def coerce_hours_index(
+    df: pd.DataFrame, horizon_h: int = 24
+) -> pd.DatetimeIndex:
     if not isinstance(df.index, pd.DatetimeIndex):
         raise TypeError("system inputs must be indexed by datetime")
     idx = df.index[:horizon_h]
@@ -109,7 +113,12 @@ def coerce_hours_index(df: pd.DataFrame, horizon_h: int = 24) -> pd.DatetimeInde
 def net_demand(
     system: pd.DataFrame,
     demand_col: str = "demand_mw",
-    renewable_cols: Iterable[str] = ("wind_mw", "solar_mw", "ror_mw", "must_run_mw"),
+    renewable_cols: Iterable[str] = (
+        "wind_mw",
+        "solar_mw",
+        "ror_mw",
+        "must_run_mw",
+    ),
 ) -> pd.Series:
     if demand_col not in system.columns:
         raise KeyError(f"missing demand column: {demand_col}")
@@ -117,5 +126,7 @@ def net_demand(
     renew = 0.0
     for c in renewable_cols:
         if c in system.columns:
-            renew = renew + pd.to_numeric(system[c], errors="coerce").fillna(0.0)
+            renew = renew + pd.to_numeric(system[c], errors="coerce").fillna(
+                0.0
+            )
     return (demand - renew).clip(lower=0.0)

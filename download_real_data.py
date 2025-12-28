@@ -73,7 +73,9 @@ def run_tests():
     """Run test suite to verify data."""
     print("\n✅ Running test suite...")
 
-    result = subprocess.run(["pytest", "-q", "--tb=short"], capture_output=False)
+    result = subprocess.run(
+        ["pytest", "-q", "--tb=short"], capture_output=False
+    )
 
     if result.returncode != 0:
         print("❌ Tests failed")
