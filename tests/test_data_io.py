@@ -8,7 +8,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 import pandas as pd
 import numpy as np
-import os
 import shutil
 import tempfile
 
@@ -23,8 +22,6 @@ class TestCSVIO(unittest.TestCase):
         """Create sample data."""
         self.prices = synthetic_area_series("DE", days=10)
         self.test_dir = tempfile.mkdtemp()
-        self.original_s3_disable = os.getenv("S3_DISABLE")
-        os.environ["S3_DISABLE"] = "1"
         import src.data.io
 
         self.original_data_dir = src.data.io.DATA_DIR
@@ -33,10 +30,6 @@ class TestCSVIO(unittest.TestCase):
     def tearDown(self):
         """Clean up test data."""
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        if self.original_s3_disable is None:
-            os.environ.pop("S3_DISABLE", None)
-        else:
-            os.environ["S3_DISABLE"] = self.original_s3_disable
         import src.data.io
 
         src.data.io.DATA_DIR = self.original_data_dir
@@ -77,8 +70,6 @@ class TestDataIntegrity(unittest.TestCase):
     def setUp(self):
         """Create temporary directory for test data."""
         self.test_dir = tempfile.mkdtemp()
-        self.original_s3_disable = os.getenv("S3_DISABLE")
-        os.environ["S3_DISABLE"] = "1"
         import src.data.io
 
         self.original_data_dir = src.data.io.DATA_DIR
@@ -87,10 +78,6 @@ class TestDataIntegrity(unittest.TestCase):
     def tearDown(self):
         """Clean up test data."""
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        if self.original_s3_disable is None:
-            os.environ.pop("S3_DISABLE", None)
-        else:
-            os.environ["S3_DISABLE"] = self.original_s3_disable
         import src.data.io
 
         src.data.io.DATA_DIR = self.original_data_dir
@@ -144,8 +131,6 @@ class TestIOErrorHandling(unittest.TestCase):
     def setUp(self):
         """Create temporary directory for test data."""
         self.test_dir = tempfile.mkdtemp()
-        self.original_s3_disable = os.getenv("S3_DISABLE")
-        os.environ["S3_DISABLE"] = "1"
         import src.data.io
 
         self.original_data_dir = src.data.io.DATA_DIR
@@ -154,10 +139,6 @@ class TestIOErrorHandling(unittest.TestCase):
     def tearDown(self):
         """Clean up test data."""
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        if self.original_s3_disable is None:
-            os.environ.pop("S3_DISABLE", None)
-        else:
-            os.environ["S3_DISABLE"] = self.original_s3_disable
         import src.data.io
 
         src.data.io.DATA_DIR = self.original_data_dir

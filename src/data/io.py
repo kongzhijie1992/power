@@ -65,9 +65,6 @@ def _cache_set(key: str, df: pd.DataFrame) -> None:
 
 
 def _s3_config() -> Optional[Tuple[str, str]]:
-    disable = os.getenv("S3_DISABLE") or os.getenv("S3_DISABLED")
-    if disable and disable.strip().lower() in {"1", "true", "yes"}:
-        return None
     bucket = os.getenv("S3_BUCKET") or "zkong-power"
     if not bucket:
         return None

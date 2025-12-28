@@ -9,7 +9,6 @@ import unittest
 import pandas as pd
 import numpy as np
 import datetime as dt
-import os
 import tempfile
 import shutil
 
@@ -61,8 +60,6 @@ class TestDataPersistence(unittest.TestCase):
     def setUp(self):
         """Create temporary directory for test data."""
         self.test_dir = tempfile.mkdtemp()
-        self.original_s3_disable = os.getenv("S3_DISABLE")
-        os.environ["S3_DISABLE"] = "1"
         # Override DATA_DIR for tests
         import src.data.io
 
@@ -72,10 +69,6 @@ class TestDataPersistence(unittest.TestCase):
     def tearDown(self):
         """Clean up temporary directory."""
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        if self.original_s3_disable is None:
-            os.environ.pop("S3_DISABLE", None)
-        else:
-            os.environ["S3_DISABLE"] = self.original_s3_disable
         import src.data.io
 
         src.data.io.DATA_DIR = self.original_data_dir
@@ -139,16 +132,8 @@ class TestIncrementalUpdate(unittest.TestCase):
         """Test that incremental update creates data when none exists."""
         # This test would require mocking ENTSO-E API
         # For now, we test that load_existing returns empty when no data
-        original_s3_disable = os.getenv("S3_DISABLE")
-        os.environ["S3_DISABLE"] = "1"
         area = "TEST_AREA"
-        try:
-            existing = load_existing(area)
-        finally:
-            if original_s3_disable is None:
-                os.environ.pop("S3_DISABLE", None)
-            else:
-                os.environ["S3_DISABLE"] = original_s3_disable
+        existing = load_existing(area)
         self.assertEqual(len(existing), 0)
 
 
