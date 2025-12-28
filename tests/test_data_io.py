@@ -9,9 +9,10 @@ import unittest
 import pandas as pd
 import numpy as np
 import shutil
+import tempfile
 
 from src.ingest.ingest_all import synthetic_area_series
-from src.data.io import save_series_csv, load_series_csv, DATA_DIR
+from src.data.io import save_series_csv, load_series_csv
 
 
 class TestCSVIO(unittest.TestCase):
@@ -20,13 +21,18 @@ class TestCSVIO(unittest.TestCase):
     def setUp(self):
         """Create sample data."""
         self.prices = synthetic_area_series("DE", days=10)
+        self.test_dir = tempfile.mkdtemp()
+        import src.data.io
+
+        self.original_data_dir = src.data.io.DATA_DIR
+        src.data.io.DATA_DIR = Path(self.test_dir)
 
     def tearDown(self):
         """Clean up test data."""
-        try:
-            (DATA_DIR / "DE").rmdir()
-        except Exception:
-            pass
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        import src.data.io
+
+        src.data.io.DATA_DIR = self.original_data_dir
 
     def test_save_and_load_csv(self):
         """Test save/load roundtrip with CSV."""
@@ -61,12 +67,20 @@ class TestCSVIO(unittest.TestCase):
 class TestDataIntegrity(unittest.TestCase):
     """Test data integrity and edge cases."""
 
+    def setUp(self):
+        """Create temporary directory for test data."""
+        self.test_dir = tempfile.mkdtemp()
+        import src.data.io
+
+        self.original_data_dir = src.data.io.DATA_DIR
+        src.data.io.DATA_DIR = Path(self.test_dir)
+
     def tearDown(self):
         """Clean up test data."""
-        try:
-            (DATA_DIR / "DE").rmdir()
-        except Exception:
-            pass
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        import src.data.io
+
+        src.data.io.DATA_DIR = self.original_data_dir
 
     def test_save_empty_series_csv(self):
         """Test saving empty series to CSV."""
@@ -112,12 +126,20 @@ class TestDataIntegrity(unittest.TestCase):
 class TestIOErrorHandling(unittest.TestCase):
     """Test error handling in I/O."""
 
+    def setUp(self):
+        """Create temporary directory for test data."""
+        self.test_dir = tempfile.mkdtemp()
+        import src.data.io
+
+        self.original_data_dir = src.data.io.DATA_DIR
+        src.data.io.DATA_DIR = Path(self.test_dir)
+
     def tearDown(self):
         """Clean up test data."""
-        try:
-            (DATA_DIR / "DE").rmdir()
-        except Exception:
-            pass
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        import src.data.io
+
+        src.data.io.DATA_DIR = self.original_data_dir
 
     def test_load_nonexistent_area(self):
         """Test loading from nonexistent area."""
@@ -129,7 +151,9 @@ class TestIOErrorHandling(unittest.TestCase):
         prices = synthetic_area_series("TEST_AREA", days=5)
         save_series_csv(prices, "TEST_AREA", "test")
 
-        path = DATA_DIR / "TEST_AREA"
+        import src.data.io
+
+        path = src.data.io.DATA_DIR / "TEST_AREA"
         self.assertTrue(path.exists())
 
         # Cleanup
