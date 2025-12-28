@@ -2,10 +2,14 @@
 
 ## Quick Answer: ✅ Ready with ~3 Years of Real Data
 
+All runtime data is stored in S3. Paths like `data/<AREA>/...` are logical and
+resolve to `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/...` when the S3 env vars are set.
+Local `data/` is no longer used for runtime storage.
+
 **Current Inventory (DE_LU primary):**
-- Prices: 25,944 hourly rows (`data/DE_LU/day_ahead.csv`, 2022-12-31 → 2025-12-16)
-- Weather: 25,872 hourly rows (`data/weather/DE_LU_weather.csv`, aligned to 2025-12-12)
-- Loads: 103,380 quarter-hour rows (`data/DE_LU/load_real.csv`)
+- Prices: 25,944 hourly rows (`s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv`, 2022-12-31 → 2025-12-16)
+- Weather: 25,872 hourly rows (`s3://$S3_BUCKET/$S3_PREFIX/weather/DE_LU_weather.csv`, aligned to 2025-12-12)
+- Loads: 103,380 quarter-hour rows (`s3://$S3_BUCKET/$S3_PREFIX/DE_LU/load_real.csv`)
 - Multi-area: 30+ bidding zones with price + weather; many with load forecasts too
 - Tests: 87/87 passing on this dataset
 
@@ -56,7 +60,7 @@ python scripts/merge_years.py --input1 GUI_2024.csv --input2 GUI_2023.csv --outp
 ## Storage & Organization (key files)
 
 ```
-data/
+s3://$S3_BUCKET/$S3_PREFIX/
 ├── DE_LU/day_ahead.csv         # main price series (25,944 rows)
 ├── DE_LU/day_ahead_real.csv    # raw API pull (25,872 rows)
 ├── DE_LU/load_real.csv         # quarter-hour load

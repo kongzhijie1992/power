@@ -3,9 +3,13 @@
 This document describes the end-to-end flow of the power stack model: where data comes from, how features are built, how models are trained/evaluated, and how forecasts feed dispatch/unit-commitment.
 
 ## 1) Inputs & Storage
-- **Prices:** `data/<AREA>/day_ahead.csv` (primary) and `data/<AREA>/day_ahead_real.csv` (raw API). Current primary: `data/DE_LU/day_ahead.csv` (25,944 rows, 2022-12-31 → 2025-12-16, UTC).
-- **Weather:** `data/weather/<AREA>_weather.csv` (hourly wind/solar proxies). Current: `data/weather/DE_LU_weather.csv` (25,872 rows).
-- **Load:** `data/<AREA>/load_real.csv` (quarter-hour actuals) and `data/<AREA>/load_forecast.csv` (TSO forecast if available). Current DE_LU load: 103,380 rows.
+All runtime data is stored in S3. Paths like `data/<AREA>/...` are logical and
+resolve to `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/...` when the S3 env vars are set.
+Local `data/` is no longer used for runtime storage.
+
+- **Prices:** `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/day_ahead.csv` (primary) and `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/day_ahead_real.csv` (raw API). Current primary: `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv` (25,944 rows, 2022-12-31 → 2025-12-16, UTC).
+- **Weather:** `s3://$S3_BUCKET/$S3_PREFIX/weather/<AREA>_weather.csv` (hourly wind/solar proxies). Current: `s3://$S3_BUCKET/$S3_PREFIX/weather/DE_LU_weather.csv` (25,872 rows).
+- **Load:** `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/load_real.csv` (quarter-hour actuals) and `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/load_forecast.csv` (TSO forecast if available). Current DE_LU load: 103,380 rows.
 - **Config:** `src/config.yaml` (ENTSO-E token, default areas, optional weather lat/lon).
 - **Helpers:** `src/data/io.py` handles CSV/Parquet read/write, column normalization, and fallback column detection.
 
@@ -69,6 +73,6 @@ This document describes the end-to-end flow of the power stack model: where data
 ## 11) Outputs & Artifacts
 - Forecasts and backtest metrics are printed/logged in runners; persist outputs via `src/data/io.py` or by editing runners to write CSV/Parquet.
 - Dispatch/UC results return DataFrames with hourly prices/dispatch; capture them in runners as needed.
-- Weather/price/load artifacts remain under `data/` with area-specific folders; summarize with `scripts/summarize_datasets.py`.
+- Weather/price/load artifacts live in `s3://$S3_BUCKET/$S3_PREFIX/` with area-specific folders; summarize with `scripts/summarize_datasets.py`.
 
 Use this map to trace any result back to its input and module. Every stage is UTC/DST-safe, merge-safe, and covered by tests in the `tests/` folder.

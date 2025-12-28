@@ -4,6 +4,10 @@
 
 The repo already contains **~3 years of real ENTSO-E prices (25,944 rows, 2022-12-31 → 2025-12-16) plus matching weather/load** fetched via the API. Use the steps below only if you need to rebuild from GUI downloads or trim to a clean 2023–2024 slice.
 
+All runtime data is stored in S3. Paths like `data/<AREA>/...` are logical and
+resolve to `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/...` when the S3 env vars are set.
+Local `data/` is no longer used for runtime storage.
+
 **If you rebuild to 2023–2024 only, expect ~17,520 rows.** Here's the quickest path:
 
 ### Quick Start (20 minutes)

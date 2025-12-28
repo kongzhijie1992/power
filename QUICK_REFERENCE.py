@@ -13,9 +13,9 @@ print(
 
 📊 DATA STATUS
 ──────────────────────────────────────────────────────────────────────────────
-Current:      ~3 years (25,944 hourly rows) in data/DE_LU/day_ahead.csv
-Weather:      25,872 hourly rows in data/weather/DE_LU_weather.csv
-Loads:        103,380 quarter-hour rows in data/DE_LU/load_real.csv
+Current:      ~3 years (25,944 hourly rows) in s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv
+Weather:      25,872 hourly rows in s3://$S3_BUCKET/$S3_PREFIX/weather/DE_LU_weather.csv
+Loads:        103,380 quarter-hour rows in s3://$S3_BUCKET/$S3_PREFIX/DE_LU/load_real.csv
 Areas:        30+ bidding zones populated via API (prices + weather; many loads)
 Quality:      Zero missing values, UTC, DST-safe ✅
 
@@ -59,10 +59,10 @@ Scripts:
   scripts/summarize_datasets.py← Multi-area inventory
   check_data.py                ← Data inventory check
 
-Data:
-  data/DE_LU/day_ahead.csv     ← Main price data (~3 years)
-  data/weather/DE_LU_weather.csv← Weather (aligned)
-  data/DE_LU/load_real.csv     ← Quarter-hour load
+Data (S3):
+  s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv      ← Main price data (~3 years)
+  s3://$S3_BUCKET/$S3_PREFIX/weather/DE_LU_weather.csv← Weather (aligned)
+  s3://$S3_BUCKET/$S3_PREFIX/DE_LU/load_real.csv      ← Quarter-hour load
 
 🔑 API TOKEN STATUS
 ──────────────────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ Next:        Schedule periodic refresh with --merge-existing
 ──────────────────────────────────────────────────────────────────────────────
 # View current data
 import pandas as pd
-df = pd.read_csv('data/DE_LU/day_ahead.csv')
+df = pd.read_csv('s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv')
 df['datetime'] = pd.to_datetime(df['datetime'])
 print(len(df), df['value'].mean())
 

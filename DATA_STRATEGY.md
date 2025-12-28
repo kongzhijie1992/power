@@ -2,11 +2,15 @@
 
 ## Current Status
 
+All runtime data is stored in S3. Paths like `data/<AREA>/...` are logical and
+resolve to `s3://$S3_BUCKET/$S3_PREFIX/<AREA>/...` when the S3 env vars are set.
+Local `data/` is no longer used for runtime storage.
+
 ### Data Inventory (as of 2025-12-13)
-- **Price Data (primary):** 25,944 hourly rows in `data/DE_LU/day_ahead.csv`
-- **Price Data (raw API):** 25,872 hourly rows in `data/DE_LU/day_ahead_real.csv`
-- **Weather:** 25,872 hourly rows in `data/weather/DE_LU_weather.csv`
-- **Loads:** 103,380 quarter-hourly rows in `data/DE_LU/load_real.csv`
+- **Price Data (primary):** 25,944 hourly rows in `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead.csv`
+- **Price Data (raw API):** 25,872 hourly rows in `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/day_ahead_real.csv`
+- **Weather:** 25,872 hourly rows in `s3://$S3_BUCKET/$S3_PREFIX/weather/DE_LU_weather.csv`
+- **Loads:** 103,380 quarter-hourly rows in `s3://$S3_BUCKET/$S3_PREFIX/DE_LU/load_real.csv`
 - **Multi-area coverage:** 30+ bidding zones (DE_LU, FR, IT, ES, NL, BE, PT, CH, Nordics, Baltics, Balkans) all with price + weather; many also include load/TSO forecast
 - **Tests:** 87/87 passing on current dataset
 
@@ -70,7 +74,7 @@ python scripts/fetch_entsoe_data.py ^
 
 ### Weather (Open-Meteo, No Auth)
 - Auto-downloaded by `scripts/fetch_entsoe_data.py` (hourly wind + solar proxies).
-- Stored in `data/weather/<AREA>_weather.csv`.
+- Stored in `s3://$S3_BUCKET/$S3_PREFIX/weather/<AREA>_weather.csv`.
 
 ## Recommended Data Plan
 
