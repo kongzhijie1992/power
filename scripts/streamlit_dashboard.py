@@ -537,7 +537,23 @@ def demand_tab():
     # Keep tab header clean; the controls below act as the section header.
     areas = _list_areas_with_file("demand_forecast.csv")
     if not areas:
-        st.info("No demand forecasts available.")
+        cfg = data_io._s3_config()
+        region = os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION")
+        has_key = bool(os.getenv("AWS_ACCESS_KEY_ID"))
+        has_secret = bool(os.getenv("AWS_SECRET_ACCESS_KEY"))
+        if cfg:
+            bucket, prefix = cfg
+            st.info(
+                "No demand forecasts available. "
+                f"S3 bucket={bucket}, prefix={prefix}, "
+                f"region={region or 'n/a'}, "
+                f"aws_key_set={has_key}, aws_secret_set={has_secret}."
+            )
+        else:
+            st.info(
+                "No demand forecasts available. "
+                "S3 is not configured; check S3_BUCKET and S3_PREFIX."
+            )
         return
     col_area, col_tz, col_range = st.columns([1.2, 1.0, 2.0])
     with col_area:
@@ -724,7 +740,23 @@ def price_tab():
     st.subheader("Price forecasts")
     areas = _list_areas_with_file("day_ahead.csv")
     if not areas:
-        st.info("No price data available.")
+        cfg = data_io._s3_config()
+        region = os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION")
+        has_key = bool(os.getenv("AWS_ACCESS_KEY_ID"))
+        has_secret = bool(os.getenv("AWS_SECRET_ACCESS_KEY"))
+        if cfg:
+            bucket, prefix = cfg
+            st.info(
+                "No price data available. "
+                f"S3 bucket={bucket}, prefix={prefix}, "
+                f"region={region or 'n/a'}, "
+                f"aws_key_set={has_key}, aws_secret_set={has_secret}."
+            )
+        else:
+            st.info(
+                "No price data available. "
+                "S3 is not configured; check S3_BUCKET and S3_PREFIX."
+            )
         return
     area = st.selectbox(
         "Price area",
