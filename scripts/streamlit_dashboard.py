@@ -27,7 +27,9 @@ except Exception:
     load_dotenv = None
 
 if load_dotenv is not None:
-    load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / ".env", override=True)
+if not os.getenv("AWS_DEFAULT_REGION") and not os.getenv("AWS_REGION"):
+    os.environ["AWS_DEFAULT_REGION"] = "eu-north-1"
 
 from src.data import io as data_io
 
