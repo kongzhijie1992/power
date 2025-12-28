@@ -11,6 +11,7 @@
 # Ignore raw ENTSOE GUI exports and generated seq CSVs
 data/DE/GUI_ENERGY_PRICES_*.csv
 data/DE/*_seq*.csv
+data/
 
 # Environment variables (API tokens, secrets)
 .env

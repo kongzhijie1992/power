@@ -42,6 +42,14 @@ except ImportError:
                 key, val = line.split("=", 1)
                 os.environ[key.strip()] = val.strip()
 
+from src.data.io import (
+    DATA_DIR,
+    path_exists,
+    read_csv_indexed,
+    resolve_write_path,
+    write_frame,
+)
+
 
 def _parse_date(date_or_str):
     """Return a date object from either a date/datetime or YYYY-MM-DD string."""
@@ -61,13 +69,9 @@ def _chunk_date_ranges(
         cursor = chunk_end + dt.timedelta(days=1)
 
 
-def _read_indexed_csv_utc(path: Path) -> pd.DataFrame:
+def _read_indexed_csv_utc(path: Path | str) -> pd.DataFrame:
     """Read a CSV written with a datetime index (index_col=0) and return df with DatetimeIndex (UTC)."""
-    df = pd.read_csv(path, index_col=0, parse_dates=True)
-    df.index = pd.to_datetime(df.index, utc=True, errors="coerce")
-    df = df[~df.index.isna()]
-    df.index.name = "datetime"
-    return df
+    return read_csv_indexed(path)
 
 
 def _merge_timeseries(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
@@ -224,9 +228,8 @@ def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path
         df.index.name = "datetime"
 
         if out_csv_path:
-            out_path = Path(out_csv_path)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(out_path)
+            out_path = resolve_write_path(out_csv_path)
+            write_frame(df, out_path)
             print(f"Saved {len(df)} hours of real ENTSO-E prices to {out_path}")
 
         return df
@@ -263,21 +266,20 @@ def download_open_meteo(
     df["time"] = pd.to_datetime(df["time"])
     df = df.set_index("time")
 
-    out_path = Path(out_csv_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path = resolve_write_path(out_csv_path)
 
     df.index = pd.to_datetime(df.index, errors="coerce")
     df = df[~df.index.isna()]
     df.index.name = "time"
 
-    if merge_existing and out_path.exists():
+    if merge_existing and path_exists(out_path):
         try:
-            old = pd.read_csv(out_path, index_col=0, parse_dates=True)
+            old = read_csv_indexed(out_path)
             old.index = pd.to_datetime(old.index, errors="coerce")
             old = old[~old.index.isna()]
             old.index.name = "time"
             merged = _merge_timeseries(old, df)
-            merged.to_csv(out_path)
+            write_frame(merged, out_path)
             print(f"Merged weather -> {out_path} ({len(merged):,} rows)")
             return merged
         except Exception as e:
@@ -285,7 +287,7 @@ def download_open_meteo(
                 f"⚠️  Failed to merge existing weather from {out_path}: {e}; overwriting."
             )
 
-    df.to_csv(out_path)
+    write_frame(df, out_path)
     print(f"Saved weather to {out_path}")
     return df
 
@@ -419,13 +421,13 @@ def main():
 
     def _process_area(area: str) -> None:
         print(f"\n===== AREA: {area} =====")
-        data_dir = Path(__file__).parents[1] / "data" / area
-        data_dir.mkdir(parents=True, exist_ok=True)
+        data_dir = DATA_DIR / area
         price_csv = (
-            Path(args.output)
+            args.output
             if (len(areas) == 1 and args.output)
             else data_dir / "day_ahead_real.csv"
         )
+        price_out = resolve_write_path(price_csv)
 
         if not args.skip_price:
             combined_frames = []
@@ -445,12 +447,10 @@ def main():
             combined = combined[
                 (combined.index >= start_ts) & (combined.index <= end_ts)
             ]
-            price_csv.parent.mkdir(parents=True, exist_ok=True)
-
             to_write = combined
-            if args.merge_existing and price_csv.exists():
+            if args.merge_existing and path_exists(price_out):
                 try:
-                    existing = _read_indexed_csv_utc(price_csv)
+                    existing = _read_indexed_csv_utc(price_out)
                     to_write = _merge_timeseries(existing, combined)
                 except Exception as e:
                     print(
@@ -458,8 +458,8 @@ def main():
                     )
                     to_write = combined
 
-            to_write.to_csv(price_csv)
-            print(f"\n✅ Saved ENTSO-E prices to {price_csv}")
+            write_frame(to_write, price_out)
+            print(f"\n✅ Saved ENTSO-E prices to {price_out}")
             print(f"   Rows: {len(to_write):,}")
             print(f"   Range: {to_write.index[0]} → {to_write.index[-1]}")
         else:
@@ -469,8 +469,7 @@ def main():
         if not args.no_weather:
             lat_lon = default_lat_lon.get(area, (args.lat, args.lon))
             lat, lon = lat_lon if lat_lon else (args.lat, args.lon)
-            weather_dir = Path(__file__).parents[1] / "data" / "weather"
-            weather_dir.mkdir(parents=True, exist_ok=True)
+            weather_dir = DATA_DIR / "weather"
             weather_csv = weather_dir / f"{area}_weather.csv"
 
             try:

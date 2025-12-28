@@ -12,6 +12,8 @@ import logging
 import pandas as pd
 import numpy as np
 
+from src.data.io import path_exists, read_csv_indexed, resolve_data_path
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -43,13 +45,21 @@ def add_gfs_features(
 
     # If a local weather CSV is provided, prefer it (no external API key required)
     if weather_csv is not None:
+        resolved = None
         try:
-            wpath = Path(weather_csv)
-        except Exception:
-            wpath = None
-        if wpath and wpath.exists():
+            if isinstance(weather_csv, Path):
+                resolved = resolve_data_path(weather_csv)
+            else:
+                as_str = str(weather_csv)
+                if as_str.startswith("s3://"):
+                    resolved = as_str
+                else:
+                    resolved = resolve_data_path(Path(as_str))
+        except FileNotFoundError:
+            resolved = None
+        if resolved and path_exists(resolved):
             try:
-                dfw = pd.read_csv(wpath, parse_dates=True, index_col=0)
+                dfw = read_csv_indexed(resolved)
                 # Normalize index to UTC-naive
                 try:
                     if dfw.index.tz is None:

@@ -67,7 +67,7 @@ def load_config():
     return yaml.safe_load(open(cfg_path)) or {}
 
 
-def main(area: str = "DE", lat: float = 52.5, lon: float = 13.4):
+def main(area: str = "DE_LU", lat: float = 52.5, lon: float = 13.4):
     """Train and backtest weather-integrated forecasting ensemble."""
     logger.info(
         "Training weather-integrated LightGBM ensemble for %s (lat=%.1f, lon=%.1f)",
@@ -133,7 +133,7 @@ def main(area: str = "DE", lat: float = 52.5, lon: float = 13.4):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--area", default="DE")
+    p.add_argument("--area", default="DE_LU")
     p.add_argument("--lat", type=float, default=52.5)
     p.add_argument("--lon", type=float, default=13.4)
     args = p.parse_args()

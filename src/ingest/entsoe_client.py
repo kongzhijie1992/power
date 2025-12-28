@@ -79,6 +79,34 @@ DEFAULT_ZONES = [
 ]
 
 
+AREA_ALIASES = {
+    "DK1": "DK_1",
+    "DK2": "DK_2",
+    "NO1": "NO_1",
+    "NO2": "NO_2",
+    "NO3": "NO_3",
+    "NO4": "NO_4",
+    "NO5": "NO_5",
+    "SE1": "SE_1",
+    "SE2": "SE_2",
+    "SE3": "SE_3",
+    "SE4": "SE_4",
+}
+
+
+def _normalize_area(area: str) -> str:
+    return AREA_ALIASES.get(area, area)
+
+
+def _ensure_entsoe_tz(ts) -> _pd.Timestamp:
+    stamp = _pd.Timestamp(ts)
+    if stamp.tz is None:
+        stamp = stamp.tz_localize("Europe/Brussels")
+    else:
+        stamp = stamp.tz_convert("Europe/Brussels")
+    return stamp
+
+
 def fetch_day_ahead_prices(
     client, area: str, start: _dt.datetime, end: _dt.datetime
 ) -> _pd.Series:
@@ -86,8 +114,13 @@ def fetch_day_ahead_prices(
 
     Returns a pandas Series indexed by UTC timestamps.
     """
-    logger.info("Fetching day-ahead prices for %s from %s to %s", area, start, end)
-    series = client.query_day_ahead_prices(area, start=start, end=end)
+    area = _normalize_area(area)
+    start_ts = _ensure_entsoe_tz(start)
+    end_ts = _ensure_entsoe_tz(end)
+    logger.info(
+        "Fetching day-ahead prices for %s from %s to %s", area, start_ts, end_ts
+    )
+    series = client.query_day_ahead_prices(area, start=start_ts, end=end_ts)
     # entsoe-py returns timezone-aware series (Europe timezone); convert to UTC naive
     if isinstance(series.index, _pd.DatetimeIndex):
         series = series.tz_convert("UTC").tz_localize(None)
@@ -102,7 +135,9 @@ def fetch_multi_area_day_ahead(client, areas=None, days=90):
     if areas is None:
         areas = DEFAULT_ZONES
     end = (
-        pd.Timestamp.utcnow().replace(minute=0, second=0, microsecond=0).to_pydatetime()
+        _pd.Timestamp.utcnow()
+        .replace(minute=0, second=0, microsecond=0)
+        .to_pydatetime()
     )
     start = end - _dt.timedelta(days=days)
     results = {}

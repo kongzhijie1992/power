@@ -22,7 +22,7 @@ Result: Updates `data/DE_LU/day_ahead_real.csv` (raw) and `data/DE_LU/day_ahead.
 
 ### Step 1: Download 2024 (5 minutes)
 1. Visit **https://www.entsoe.eu/data/energy-prices-data/**
-2. Area **Germany (DE)**, Data type **Day-ahead prices**
+2. Area **Germany/Luxembourg (DE_LU)**, Data type **Day-ahead prices**
 3. Period: `01/01/2024 00:00` → `31/12/2024 23:45`
 4. Save as `GUI_2024.csv`
 

@@ -26,8 +26,9 @@ from tvDatafeed import Interval, TvDatafeed
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(message)s")
 log = logging.getLogger("fetch_tradingview")
 
-OUT_PATH = Path("data/market/commodities.csv")
-OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+from src.data.io import DATA_DIR, resolve_write_path, write_frame
+
+OUT_PATH = DATA_DIR / "market" / "commodities.csv"
 
 # Default symbols (can be tweaked per desk preference)
 SYMBOLS = {
@@ -81,8 +82,9 @@ def main():
     out = (
         df.resample("1H").ffill().reset_index().rename(columns={"datetime": "datetime"})
     )
-    out.to_csv(OUT_PATH, index=False)
-    log.info("Saved %s (rows=%d)", OUT_PATH, len(out))
+    out_path = resolve_write_path(OUT_PATH)
+    write_frame(out, out_path, index=False)
+    log.info("Saved %s (rows=%d)", out_path, len(out))
 
 
 if __name__ == "__main__":

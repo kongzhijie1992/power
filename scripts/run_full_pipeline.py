@@ -84,7 +84,7 @@ def main(area: str, synthetic: bool = True):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--area", default="DE")
+    p.add_argument("--area", default="DE_LU")
     p.add_argument("--synthetic", action="store_true")
     args = p.parse_args()
     main(args.area, synthetic=args.synthetic)

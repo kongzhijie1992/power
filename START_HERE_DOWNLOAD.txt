@@ -18,7 +18,7 @@ python check_data.py
 ```
 
 ## GUI Fallback (if token unavailable)
-- Download 2024 + 2023 from https://www.entsoe.eu/data/energy-prices-data/ (Day-ahead prices, DE)
+- Download 2024 + 2023 from https://www.entsoe.eu/data/energy-prices-data/ (Day-ahead prices, DE_LU)
 - Run:
   ```powershell
   python scripts/merge_years.py --input1 GUI_2024.csv --input2 GUI_2023.csv --output data\DE_LU\day_ahead.csv --sequence 1

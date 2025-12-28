@@ -11,13 +11,18 @@ import pandas as pd
 import numpy as np
 
 from .entsoe_client import get_client, DEFAULT_ZONES, fetch_day_ahead_prices
+from .parallel_ingest import fetch_parallel
 from src.data.io import save_series_csv
 
 logger = logging.getLogger(__name__)
 
 
 def fetch_and_persist_all(
-    api_key: Optional[str] = None, areas: Optional[List[str]] = None, days: int = 90
+    api_key: Optional[str] = None,
+    areas: Optional[List[str]] = None,
+    days: int = 90,
+    max_workers: int = 1,
+    executor: str = "thread",
 ):
     if areas is None:
         areas = DEFAULT_ZONES
@@ -26,6 +31,17 @@ def fetch_and_persist_all(
         raise ValueError(
             "No API key provided — use synthetic mode or provide entsoe.api_key in config"
         )
+    if max_workers > 1 and len(areas) > 1:
+        fetch_parallel(
+            api_key=api_key,
+            areas=areas,
+            days=days,
+            max_workers=max_workers,
+            executor=executor,
+            save_parquet=False,
+        )
+        return
+
     client = get_client(api_key=api_key)
     end = dt.datetime.utcnow().replace(minute=0, second=0, microsecond=0)
     start = end - dt.timedelta(days=days)

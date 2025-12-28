@@ -14,6 +14,7 @@ import argparse
 import os
 from pathlib import Path
 import datetime as dt
+import concurrent.futures
 from typing import Iterable, Tuple
 
 import pandas as pd
@@ -31,6 +32,8 @@ except ImportError:
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
                 os.environ[k.strip()] = v.strip()
+
+from src.data.io import DATA_DIR, resolve_write_path, write_frame
 
 
 AREA_MAP = {
@@ -129,6 +132,51 @@ def fetch_load_entsoe(
     raise ValueError(f"No load data returned for {area}")
 
 
+def _fetch_area_load(
+    area: str,
+    api_token: str,
+    ranges: list[Tuple[dt.date, dt.date]],
+    output_override: str | None = None,
+) -> tuple[str, Path, int]:
+    try:
+        from entsoe import EntsoePandasClient
+    except ImportError:
+        raise SystemExit(
+            "entsoe-py not installed. Install with `pip install entsoe-py`."
+        )
+
+    client = EntsoePandasClient(api_key=api_token)
+    combined = []
+    for idx, (cs, ce) in enumerate(ranges, start=1):
+        print(f"\n[{area}] Chunk {idx}/{len(ranges)}: {cs} → {ce}")
+        try:
+            s_chunk = fetch_load_entsoe(
+                client, AREA_MAP.get(area, area), cs, ce, forecast=True
+            )
+        except Exception as e:
+            print(f"  Forecast load failed for {area}: {e}. Trying actual load...")
+            s_chunk = fetch_load_entsoe(
+                client, AREA_MAP.get(area, area), cs, ce, forecast=False
+            )
+        combined.append(s_chunk)
+
+    s = pd.concat(combined).sort_index()
+    s = s[~s.index.duplicated(keep="first")]
+    # clamp (all naive UTC)
+    start_ts = pd.Timestamp(ranges[0][0])
+    end_ts = pd.Timestamp(ranges[-1][1] + dt.timedelta(days=1)) - pd.Timedelta(
+        hours=1
+    )
+    s = s[(s.index >= start_ts) & (s.index <= end_ts)]
+
+    area_dir = DATA_DIR / area
+    out_csv = output_override if output_override else area_dir / "load_real.csv"
+    out_csv = resolve_write_path(out_csv)
+    write_frame(s.to_frame("value"), out_csv, index_label="datetime")
+    print(f"✅ Saved load to {out_csv} ({len(s):,} rows)")
+    return area, out_csv, len(s)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--area", default="DE_LU")
@@ -136,6 +184,10 @@ def main():
     p.add_argument("--start-date", required=True)
     p.add_argument("--end-date", required=True)
     p.add_argument("--chunk-days", type=int, default=90)
+    p.add_argument("--workers", type=int, default=0, help="0 uses a small auto pool")
+    p.add_argument(
+        "--executor", choices=["thread", "process"], default="thread"
+    )
     p.add_argument(
         "--output",
         help="Single-area output CSV (defaults to data/<AREA>/load_real.csv)",
@@ -145,13 +197,6 @@ def main():
     api_token = os.getenv("ENTSOE_API_TOKEN")
     if not api_token:
         raise SystemExit("ENTSOE_API_TOKEN not set (env or .env)")
-    try:
-        from entsoe import EntsoePandasClient
-    except ImportError:
-        raise SystemExit(
-            "entsoe-py not installed. Install with `pip install entsoe-py`."
-        )
-
     areas = args.areas if args.areas else [args.area]
     ranges = list(
         _chunk_ranges(
@@ -162,41 +207,33 @@ def main():
     )
     print(f"Planned calls per area: {len(ranges)} chunks")
 
-    client = EntsoePandasClient(api_key=api_token)
+    if len(areas) == 1 and args.output:
+        _fetch_area_load(areas[0], api_token, ranges, output_override=args.output)
+        return
 
-    for area in areas:
-        combined = []
-        for idx, (cs, ce) in enumerate(ranges, start=1):
-            print(f"\nChunk {idx}/{len(ranges)}: {cs} → {ce}")
+    workers = args.workers or min(4, len(areas))
+    if workers <= 1 or len(areas) == 1:
+        for area in areas:
+            _fetch_area_load(area, api_token, ranges)
+        return
+
+    executor_cls = (
+        concurrent.futures.ThreadPoolExecutor
+        if args.executor == "thread"
+        else concurrent.futures.ProcessPoolExecutor
+    )
+    print(f"Fetching {len(areas)} areas using {workers} {args.executor}(s).")
+    with executor_cls(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_fetch_area_load, area, api_token, ranges): area
+            for area in areas
+        }
+        for fut in concurrent.futures.as_completed(futures):
+            area = futures[fut]
             try:
-                s_chunk = fetch_load_entsoe(
-                    client, AREA_MAP.get(area, area), cs, ce, forecast=True
-                )
-            except Exception as e:
-                print(f"  Forecast load failed for {area}: {e}. Trying actual load...")
-                s_chunk = fetch_load_entsoe(
-                    client, AREA_MAP.get(area, area), cs, ce, forecast=False
-                )
-            combined.append(s_chunk)
-
-        s = pd.concat(combined).sort_index()
-        s = s[~s.index.duplicated(keep="first")]
-        # clamp (all naive UTC)
-        start_ts = pd.Timestamp(_parse_date(args.start_date))
-        end_ts = pd.Timestamp(
-            _parse_date(args.end_date) + dt.timedelta(days=1)
-        ) - pd.Timedelta(hours=1)
-        s = s[(s.index >= start_ts) & (s.index <= end_ts)]
-
-        area_dir = Path("data") / area
-        area_dir.mkdir(parents=True, exist_ok=True)
-        out_csv = (
-            Path(args.output)
-            if (len(areas) == 1 and args.output)
-            else area_dir / "load_real.csv"
-        )
-        s.to_csv(out_csv, index_label="datetime")
-        print(f"✅ Saved load to {out_csv} ({len(s):,} rows)")
+                fut.result()
+            except Exception as exc:
+                print(f"⚠️  Area {area} failed: {exc}")
 
 
 if __name__ == "__main__":

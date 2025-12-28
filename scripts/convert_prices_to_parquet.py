@@ -5,9 +5,9 @@ Convert all downloaded price CSVs to Parquet for faster loading.
 Usage:
   python scripts/convert_prices_to_parquet.py
 """
-from pathlib import Path
 import pandas as pd
 
+from src.data.io import DATA_DIR, path_exists, read_frame, resolve_write_path, write_frame
 AREAS = [
     "DE_LU",
     "FR",
@@ -46,15 +46,15 @@ AREAS = [
 
 
 def convert_area(area: str):
-    csv_path = Path(f"data/{area}/day_ahead_real.csv")
-    parquet_path = Path(f"data/{area}/day_ahead_real.parquet")
-    if not csv_path.exists():
+    csv_path = DATA_DIR / area / "day_ahead_real.csv"
+    parquet_path = DATA_DIR / area / "day_ahead_real.parquet"
+    if not path_exists(csv_path):
         print(f"{area}: CSV missing, skipping ({csv_path})")
         return
-    df = pd.read_csv(csv_path, parse_dates=["datetime"])
-    parquet_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(parquet_path, index=False)
-    print(f"{area}: wrote {len(df):,} rows to {parquet_path}")
+    df = read_frame(csv_path)
+    out_path = resolve_write_path(parquet_path)
+    write_frame(df, out_path, index=False)
+    print(f"{area}: wrote {len(df):,} rows to {out_path}")
 
 
 def main():

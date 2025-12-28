@@ -1,7 +1,7 @@
 """Generate sample price data and download weather for a given area.
 
 Usage:
-  python scripts/fetch_sample_data.py --area DE --days 90
+  python scripts/fetch_sample_data.py --area DE_LU --days 90
 
 Creates:
  - data/<AREA>/day_ahead.csv  (hourly prices, column 'value')
@@ -25,7 +25,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.ingest.ingest_all import synthetic_area_series
-from src.data.io import save_series_csv
+from src.data.io import DATA_DIR, resolve_write_path, save_series_csv, write_frame
 
 
 def download_open_meteo(lat, lon, start_date, end_date, out_csv_path):
@@ -45,16 +45,15 @@ def download_open_meteo(lat, lon, start_date, end_date, out_csv_path):
     df = pd.DataFrame(hourly)
     df["time"] = pd.to_datetime(df["time"])
     df = df.set_index("time")
-    out_dir = Path(out_csv_path).parent
-    out_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv_path)
+    out_path = resolve_write_path(out_csv_path)
+    write_frame(df, out_path)
     print("Saved weather to", out_csv_path)
     return out_csv_path
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--area", default="DE")
+    p.add_argument("--area", default="DE_LU")
     p.add_argument("--lat", type=float, default=52.52)
     p.add_argument("--lon", type=float, default=13.405)
     p.add_argument("--days", type=int, default=90)
@@ -66,8 +65,7 @@ def main():
     # Prices: use synthetic generator
     print("Generating synthetic prices for", area, f"({days} days)")
     s = synthetic_area_series(area, days=days)
-    data_dir = Path(__file__).parents[1] / "data" / area
-    data_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = DATA_DIR / area
     price_csv = data_dir / "day_ahead.csv"
     # write as CSV with column 'value' via save_series_csv
     save_series_csv(s, area)
@@ -78,8 +76,7 @@ def main():
     start = end - dt.timedelta(days=days)
     start_str = start.isoformat()
     end_str = (end - dt.timedelta(days=1)).isoformat()  # end param is inclusive
-    weather_dir = Path(__file__).parents[1] / "data" / "weather"
-    weather_dir.mkdir(parents=True, exist_ok=True)
+    weather_dir = DATA_DIR / "weather"
     weather_csv = weather_dir / f"{area}_weather.csv"
     try:
         download_open_meteo(args.lat, args.lon, start_str, end_str, weather_csv)

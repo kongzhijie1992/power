@@ -5,9 +5,9 @@ Summarize available price and weather datasets across areas.
 Usage:
   python scripts/summarize_datasets.py
 """
-from pathlib import Path
 import pandas as pd
 
+from src.data.io import DATA_DIR, path_exists, read_frame
 AREAS = [
     "DE_LU",
     "FR",
@@ -46,13 +46,13 @@ AREAS = [
 
 
 def summarize_area(area: str):
-    price_path = Path(f"data/{area}/day_ahead_real.csv")
-    weather_path = Path(f"data/weather/{area}_weather.csv")
-    load_path = Path(f"data/{area}/load_real.csv")
+    price_path = DATA_DIR / area / "day_ahead_real.csv"
+    weather_path = DATA_DIR / "weather" / f"{area}_weather.csv"
+    load_path = DATA_DIR / area / "load_real.csv"
 
     price_info = ("MISSING", "-", "-", "-")
-    if price_path.exists():
-        df = pd.read_csv(price_path)
+    if path_exists(price_path):
+        df = read_frame(price_path)
         df["datetime"] = pd.to_datetime(df["datetime"])
         price_info = (
             f"{len(df):,}",
@@ -62,8 +62,8 @@ def summarize_area(area: str):
         )
 
     weather_info = ("MISSING", "-", "-", "-")
-    if weather_path.exists():
-        wf = pd.read_csv(weather_path)
+    if path_exists(weather_path):
+        wf = read_frame(weather_path)
         wf["time"] = pd.to_datetime(wf["time"])
         weather_info = (
             f"{len(wf):,}",
@@ -73,8 +73,8 @@ def summarize_area(area: str):
         )
 
     load_info = ("MISSING", "-", "-", "-")
-    if load_path.exists():
-        lf = pd.read_csv(load_path)
+    if path_exists(load_path):
+        lf = read_frame(load_path)
         lf["datetime"] = pd.to_datetime(lf["datetime"])
         load_info = (
             f"{len(lf):,}",

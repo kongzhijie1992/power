@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 import pandas as pd
 import requests
+
+from src.data.io import resolve_write_path, write_frame
 from datetime import datetime, timedelta
 import os
 
@@ -127,7 +129,7 @@ STEP 2: Set Download Filters
 ─────────────────────────────────────────────────────────────────────────────
 Set the following options:
 
-  Market Area / Country:     Germany (DE)
+  Market Area / Country:     Germany/Luxembourg (DE_LU)
   Data Type:                 Day-ahead prices
   Date From:                 01/01/2024
   Date To:                   31/12/2024
@@ -195,7 +197,7 @@ Run:
 
 Expected output:
   === CURRENT DATA STATUS ===
-  Main data file: data/DE/day_ahead.csv
+  Main data file: data/DE_LU/day_ahead.csv
   Rows: 17,520
   Date range: 2023-01-01 00:00:00 to 2024-12-31 23:00:00
   Days covered: 730
@@ -242,7 +244,7 @@ If tests fail:
     )
 
 
-def merge_csv_files(input_files, output_file="data/DE/day_ahead.csv", sequence=1):
+def merge_csv_files(input_files, output_file="data/DE_LU/day_ahead.csv", sequence=1):
     """Merge multiple ENTSO-E GUI CSV files."""
     print(f"\n📦 Merging {len(input_files)} files...")
 
@@ -313,9 +315,12 @@ def merge_csv_files(input_files, output_file="data/DE/day_ahead.csv", sequence=1
         combined = combined.tz_convert("UTC")
 
     # Write output
-    output_path = Path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    combined.rename("value").to_frame().to_csv(output_path, index_label="datetime")
+    output_path = resolve_write_path(Path(output_file))
+    write_frame(
+        combined.rename("value").to_frame(),
+        output_path,
+        index_label="datetime",
+    )
 
     print(f"\n✅ Merge complete!")
     print(f"   File: {output_path}")
@@ -375,7 +380,7 @@ def create_sample_2year():
 
     print(f"\n📝 Sample files created. Merge with:")
     print(
-        f"   python scripts/merge_years.py --input1 GUI_2024_sample.csv --input2 GUI_2023_sample.csv --output data/DE/day_ahead.csv"
+        f"   python scripts/merge_years.py --input1 GUI_2024_sample.csv --input2 GUI_2023_sample.csv --output data/DE_LU/day_ahead.csv"
     )
 
 
@@ -402,7 +407,9 @@ Examples:
     p.add_argument("--input1", help="First CSV file to merge")
     p.add_argument("--input2", help="Second CSV file to merge")
     p.add_argument("--input3", help="Third CSV file to merge (optional)")
-    p.add_argument("--output", default="data/DE/day_ahead.csv", help="Output file path")
+    p.add_argument(
+        "--output", default="data/DE_LU/day_ahead.csv", help="Output file path"
+    )
 
     args = p.parse_args()
 

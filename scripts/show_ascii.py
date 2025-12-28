@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render a small ASCII preview of an image file to the terminal.
 
-Usage: .venv\Scripts\python scripts\show_ascii.py data/DE/seq_compare.png --width 80
+Usage: .venv\Scripts\python scripts\show_ascii.py data/DE_LU/seq_compare.png --width 80
 """
 import sys
 from pathlib import Path

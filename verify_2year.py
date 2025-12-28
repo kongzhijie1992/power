@@ -1,9 +1,11 @@
 import pandas as pd
 
-df = pd.read_csv("data/DE/day_ahead_2year.csv", index_col=0, parse_dates=True)
+from src.data.io import read_frame
+
+df = read_frame("data/DE_LU/day_ahead_2year.csv")
 
 print("=== 2-YEAR MERGED DATA ===")
-print(f"File: data/DE/day_ahead_2year.csv")
+print(f"File: data/DE_LU/day_ahead_2year.csv")
 print(f"Rows: {len(df):,}")
 print(f"Date range: {df.index[0]} to {df.index[-1]}")
 print(f"Days covered: {(df.index[-1] - df.index[0]).days}")

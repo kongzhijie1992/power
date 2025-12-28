@@ -18,7 +18,7 @@ The repo already contains **~3 years of real ENTSO-E prices (25,944 rows, 2022-1
 python scripts/merge_years.py \
   --input1 GUI_2024.csv \
   --input2 GUI_2023.csv \
-  --output data/DE/day_ahead.csv \
+  --output data/DE_LU/day_ahead.csv \
   --sequence 1
 
 # 3. Verify (1 min)
@@ -70,7 +70,7 @@ pytest -q
 ### Step 1: Download 2024 Data
 1. Visit: **https://www.entsoe.eu/data/energy-prices-data/**
 2. Filter:
-   - **Area:** Germany (DE)
+   - **Area:** Germany/Luxembourg (DE_LU)
    - **Data type:** Day-ahead prices
    - **From:** 01/01/2024 00:00
    - **To:** 31/12/2024 23:45
@@ -95,7 +95,7 @@ cd C:\Users\zkong\Desktop\power
 python scripts/merge_years.py \
   --input1 GUI_2024.csv \
   --input2 GUI_2023.csv \
-  --output data\DE\day_ahead.csv \
+  --output data\DE_LU\day_ahead.csv \
   --sequence 1
 ```
 
@@ -108,7 +108,7 @@ Reading GUI_2023.csv... 8760 hourly rows
 
 Merging 2 datasets...
 
-✅ Merged file written: data\DE\day_ahead.csv
+✅ Merged file written: data\DE_LU\day_ahead.csv
    Rows: 17,520
    Date range: 2023-01-01 00:00:00+00:00 to 2024-12-31 23:00:00+00:00
    Missing values: 0
@@ -123,7 +123,7 @@ python check_data.py
 **Expected:**
 ```
 === CURRENT DATA STATUS ===
-Main data file: data/DE/day_ahead.csv
+Main data file: data/DE_LU/day_ahead.csv
 Rows: 17,520
 Date range: 2023-01-01 00:00:00 to 2024-12-31 23:00:00
 Days covered: 730
@@ -149,7 +149,7 @@ python scripts/merge_years.py \
   --input1 GUI_2025.csv \
   --input2 GUI_2024.csv \
   --input3 GUI_2023.csv \
-  --output data\DE\day_ahead.csv \
+  --output data\DE_LU\day_ahead.csv \
   --sequence 1
 ```
 
@@ -202,7 +202,7 @@ After merging, analyze seasonal patterns:
 ```python
 import pandas as pd
 
-df = pd.read_csv('data/DE/day_ahead.csv')
+df = pd.read_csv('data/DE_LU/day_ahead.csv')
 df['datetime'] = pd.to_datetime(df['datetime'])
 df['year'] = df['datetime'].dt.year
 df['month'] = df['datetime'].dt.month
@@ -225,13 +225,13 @@ Now runs with 2x more data = more robust results
 from src.models.forecast import train_model
 
 # Train on 2 years instead of 1
-prices = pd.read_csv('data/DE/day_ahead.csv')
+prices = pd.read_csv('data/DE_LU/day_ahead.csv')
 model = train_model(prices, lags=24*7*2)  # 2 weeks lookback
 ```
 
 ### Seasonal Analysis
 ```python
-prices = pd.read_csv('data/DE/day_ahead.csv')
+prices = pd.read_csv('data/DE_LU/day_ahead.csv')
 prices['datetime'] = pd.to_datetime(prices['datetime'])
 
 # Now you can properly detect seasonal patterns

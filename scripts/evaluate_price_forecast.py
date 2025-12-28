@@ -25,14 +25,21 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data.io import load_price_series
+from src.data.io import (
+    DATA_DIR,
+    load_price_series,
+    path_exists,
+    read_frame,
+    resolve_data_path,
+    resolve_write_path,
+    write_frame,
+)
 from src.models.backtest import walk_forward_predict_series, simple_rmse
 from src.models.price_model import forecast_price
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path("data")
 
 
 def _load_price_series(area: str, days: int | None = None) -> pd.Series:
@@ -81,9 +88,17 @@ def evaluate_area(
     )
     weather_df = None
     if weather_path:
-        path = Path(weather_path.format(area=area))
-        if path.exists():
-            weather_df = pd.read_csv(path)
+        formatted = weather_path.format(area=area)
+        resolved = None
+        try:
+            if formatted.startswith("s3://"):
+                resolved = formatted
+            else:
+                resolved = resolve_data_path(Path(formatted))
+        except FileNotFoundError:
+            resolved = None
+        if resolved and path_exists(resolved):
+            weather_df = read_frame(resolved)
 
     # lightweight backtest (limit windows for speed)
     bt_rows = []
@@ -141,9 +156,10 @@ def evaluate_area(
                 hist_rmse,
             )
             if save_forecast:
-                hist_out = DATA_DIR / area / "price_history_predictions.csv"
-                hist_out.parent.mkdir(parents=True, exist_ok=True)
-                hist_preds.to_csv(hist_out, index_label="datetime")
+                hist_out = resolve_write_path(
+                    DATA_DIR / area / "price_history_predictions.csv"
+                )
+                write_frame(hist_preds, hist_out, index_label="datetime")
                 logger.info("%s: saved history predictions -> %s", area, hist_out)
 
     # forward forecast for dashboarding
@@ -158,9 +174,8 @@ def evaluate_area(
     fc_df["q10"] = fc_df["mean"] * 0.9
     fc_df["q90"] = fc_df["mean"] * 1.1
     if save_forecast:
-        out_path = DATA_DIR / area / "price_forecast.csv"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        fc_df.to_csv(out_path, index_label="datetime")
+        out_path = resolve_write_path(DATA_DIR / area / "price_forecast.csv")
+        write_frame(fc_df, out_path, index_label="datetime")
         logger.info("%s: saved forecast -> %s", area, out_path)
 
     return bt, fc_df
