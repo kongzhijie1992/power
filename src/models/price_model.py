@@ -116,7 +116,9 @@ def _build_recursive_features(
     for i in range(horizon_hours):
         ts = series_aug.index.max() + pd.Timedelta(hours=1)
         candidate = pd.concat([series_aug, pd.Series(index=[ts], dtype=float)])
-        feat_df = build_price_features(candidate, weather=weather, country=country)
+        feat_df = build_price_features(
+            candidate, weather=weather, country=country
+        )
         row = feat_df.iloc[[-1]].drop(columns=["y"])
         if hasattr(model, "feature_list_"):
             row = row.reindex(columns=model.feature_list_, fill_value=0)
@@ -136,6 +138,10 @@ def forecast_price(
     """Train a model on history and forecast horizon using recursive one-hour steps."""
     history = history.sort_index()
     history.index = _tz_naive(history.index)
-    model = train_price_model(history, weather=weather, country=country, params=params)
+    model = train_price_model(
+        history, weather=weather, country=country, params=params
+    )
     horizon_hours = horizon_days * 24
-    return _build_recursive_features(history, model, weather, horizon_hours, country)
+    return _build_recursive_features(
+        history, model, weather, horizon_hours, country
+    )

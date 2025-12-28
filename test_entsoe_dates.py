@@ -50,7 +50,9 @@ for start, end, desc in tests:
     elif response.status_code == 200:
         # Check if we got actual price data
         if "<Price>" in response.text or "<price.amount>" in response.text:
-            print(f"✅ {desc} ({start} to {end.strftime('%Y-%m-%d')}): Data found!")
+            print(
+                f"✅ {desc} ({start} to {end.strftime('%Y-%m-%d')}): Data found!"
+            )
             print(f"   Response size: {len(response.text)} chars")
         else:
             print(

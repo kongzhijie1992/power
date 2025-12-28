@@ -44,7 +44,14 @@ class TestDSTHandling(unittest.TestCase):
                 mtu = f'{ts.strftime("%d/%m/%Y %H:%M:%S")} - {ts_end.strftime("%d/%m/%Y %H:%M:%S")}'
                 price = 50.0 + hour
                 rows.append(
-                    [mtu, "BZN|DE-LU", "Sequence Sequence 1", f"{price:.2f}", "", ""]
+                    [
+                        mtu,
+                        "BZN|DE-LU",
+                        "Sequence Sequence 1",
+                        f"{price:.2f}",
+                        "",
+                        "",
+                    ]
                 )
 
         # March 30, 2025 (25 hours total, but still normal UTC progression)
@@ -56,7 +63,14 @@ class TestDSTHandling(unittest.TestCase):
                 mtu = f'{ts.strftime("%d/%m/%Y %H:%M:%S")} - {ts_end.strftime("%d/%m/%Y %H:%M:%S")}'
                 price = 50.0 + (hour % 24)
                 rows.append(
-                    [mtu, "BZN|DE-LU", "Sequence Sequence 1", f"{price:.2f}", "", ""]
+                    [
+                        mtu,
+                        "BZN|DE-LU",
+                        "Sequence Sequence 1",
+                        f"{price:.2f}",
+                        "",
+                        "",
+                    ]
                 )
 
         # Write to temp file and convert
@@ -84,20 +98,29 @@ class TestDSTHandling(unittest.TestCase):
                 "UTC",
             ]
             result = subprocess.run(
-                cmd, cwd=Path(__file__).parent.parent, capture_output=True, text=True
+                cmd,
+                cwd=Path(__file__).parent.parent,
+                capture_output=True,
+                text=True,
             )
-            self.assertEqual(result.returncode, 0, f"Converter failed: {result.stderr}")
+            self.assertEqual(
+                result.returncode, 0, f"Converter failed: {result.stderr}"
+            )
 
             # Load converted data
             seq1 = pd.read_csv(dst, index_col=0, parse_dates=True)
 
             # Verify:
             # - Index is timezone-aware UTC
-            self.assertIsNotNone(seq1.index.tz, "Index should be timezone-aware")
+            self.assertIsNotNone(
+                seq1.index.tz, "Index should be timezone-aware"
+            )
             self.assertEqual(str(seq1.index.tz), "UTC", "Index should be UTC")
 
             # - No gaps or duplicates (49 hours total: 24 on 29th + 25 on 30th)
-            self.assertEqual(len(seq1), 49, f"Expected 49 hourly rows, got {len(seq1)}")
+            self.assertEqual(
+                len(seq1), 49, f"Expected 49 hourly rows, got {len(seq1)}"
+            )
 
             # - Index is monotonically increasing
             self.assertTrue(
@@ -106,7 +129,9 @@ class TestDSTHandling(unittest.TestCase):
             )
 
             # - Values are continuous (no NaN)
-            self.assertEqual(seq1["value"].isna().sum(), 0, "Should have no NaN values")
+            self.assertEqual(
+                seq1["value"].isna().sum(), 0, "Should have no NaN values"
+            )
 
             print(
                 f"✓ Spring forward test passed: {len(seq1)} hours from {seq1.index[0]} to {seq1.index[-1]}"
@@ -142,7 +167,14 @@ class TestDSTHandling(unittest.TestCase):
                 mtu = f'{ts.strftime("%d/%m/%Y %H:%M:%S")} - {ts_end.strftime("%d/%m/%Y %H:%M:%S")}'
                 price = 60.0 + hour
                 rows.append(
-                    [mtu, "BZN|DE-LU", "Sequence Sequence 1", f"{price:.2f}", "", ""]
+                    [
+                        mtu,
+                        "BZN|DE-LU",
+                        "Sequence Sequence 1",
+                        f"{price:.2f}",
+                        "",
+                        "",
+                    ]
                 )
 
         # October 26, 2025 (25 hours: 00-23 UTC)
@@ -154,7 +186,14 @@ class TestDSTHandling(unittest.TestCase):
                 mtu = f'{ts.strftime("%d/%m/%Y %H:%M:%S")} - {ts_end.strftime("%d/%m/%Y %H:%M:%S")}'
                 price = 60.0 + (hour % 24)
                 rows.append(
-                    [mtu, "BZN|DE-LU", "Sequence Sequence 1", f"{price:.2f}", "", ""]
+                    [
+                        mtu,
+                        "BZN|DE-LU",
+                        "Sequence Sequence 1",
+                        f"{price:.2f}",
+                        "",
+                        "",
+                    ]
                 )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -181,20 +220,29 @@ class TestDSTHandling(unittest.TestCase):
                 "UTC",
             ]
             result = subprocess.run(
-                cmd, cwd=Path(__file__).parent.parent, capture_output=True, text=True
+                cmd,
+                cwd=Path(__file__).parent.parent,
+                capture_output=True,
+                text=True,
             )
-            self.assertEqual(result.returncode, 0, f"Converter failed: {result.stderr}")
+            self.assertEqual(
+                result.returncode, 0, f"Converter failed: {result.stderr}"
+            )
 
             # Load converted data
             seq1 = pd.read_csv(dst, index_col=0, parse_dates=True)
 
             # Verify:
             # - Index is timezone-aware UTC
-            self.assertIsNotNone(seq1.index.tz, "Index should be timezone-aware")
+            self.assertIsNotNone(
+                seq1.index.tz, "Index should be timezone-aware"
+            )
             self.assertEqual(str(seq1.index.tz), "UTC", "Index should be UTC")
 
             # - No gaps or duplicates (49 hours total: 24 on 25th + 25 on 26th)
-            self.assertEqual(len(seq1), 49, f"Expected 49 hourly rows, got {len(seq1)}")
+            self.assertEqual(
+                len(seq1), 49, f"Expected 49 hourly rows, got {len(seq1)}"
+            )
 
             # - Index is monotonically increasing
             self.assertTrue(
@@ -203,7 +251,9 @@ class TestDSTHandling(unittest.TestCase):
             )
 
             # - Values are continuous (no NaN)
-            self.assertEqual(seq1["value"].isna().sum(), 0, "Should have no NaN values")
+            self.assertEqual(
+                seq1["value"].isna().sum(), 0, "Should have no NaN values"
+            )
 
             print(
                 f"✓ Fall back test passed: {len(seq1)} hours from {seq1.index[0]} to {seq1.index[-1]}"
@@ -216,7 +266,9 @@ class TestDSTHandling(unittest.TestCase):
             "2025-03-29", "2025-03-31", freq="h", tz="Europe/Berlin"
         )
 
-        series = pd.Series(np.random.randn(len(index_berlin)) + 50, index=index_berlin)
+        series = pd.Series(
+            np.random.randn(len(index_berlin)) + 50, index=index_berlin
+        )
 
         # Apply the conversion logic from entsoe_client.py
         # entsoe-py returns timezone-aware series (Europe timezone); convert to UTC naive
@@ -241,7 +293,9 @@ class TestDSTHandling(unittest.TestCase):
             "Index should be monotonically increasing after conversion",
         )
 
-        print(f"✓ ENTSOE client DST handling verified: {len(converted)} hours, no gaps")
+        print(
+            f"✓ ENTSOE client DST handling verified: {len(converted)} hours, no gaps"
+        )
 
 
 if __name__ == "__main__":

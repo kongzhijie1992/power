@@ -28,7 +28,9 @@ def main(area: str, history_days: int = 90, horizon: int = 7):
     print(f"Fetched {len(prices)} price points for {area}")
 
     # Ensure hourly UTC index
-    prices.index = pd.to_datetime(prices.index).tz_convert("UTC").tz_localize(None)
+    prices.index = (
+        pd.to_datetime(prices.index).tz_convert("UTC").tz_localize(None)
+    )
 
     # Forecast
     forecast = seasonal_naive_forecast(prices, days=horizon)

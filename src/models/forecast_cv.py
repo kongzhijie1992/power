@@ -96,7 +96,10 @@ def cv_train_lgbm(
 
 
 def quantile_models_train(
-    series: pd.Series, quantiles=(0.1, 0.5, 0.9), lat: float = 52.5, lon: float = 13.4
+    series: pd.Series,
+    quantiles=(0.1, 0.5, 0.9),
+    lat: float = 52.5,
+    lon: float = 13.4,
 ) -> Optional[Dict]:
     """Train separate LightGBM quantile models for probabilistic forecasts."""
     if lgb is None:
@@ -121,7 +124,11 @@ def quantile_models_train(
 
 
 def predict_with_model(
-    model, history: pd.Series, days: int = 7, lat: float = 52.5, lon: float = 13.4
+    model,
+    history: pd.Series,
+    days: int = 7,
+    lat: float = 52.5,
+    lon: float = 13.4,
 ) -> pd.Series:
     """Generate forecast using trained model or fallback to seasonal-naive."""
     if model is None:

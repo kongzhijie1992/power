@@ -89,4 +89,6 @@ class BacktestRunner:
             else np.nan
         )
 
-        return BacktestResult(pnl=pnl_df, predictions=preds_df, daily_summary=daily)
+        return BacktestResult(
+            pnl=pnl_df, predictions=preds_df, daily_summary=daily
+        )

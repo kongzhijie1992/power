@@ -72,7 +72,9 @@ class TestFeatureEngineering(unittest.TestCase):
         df, cols = build_features_with_weather(self.prices, lat=52.5, lon=13.4)
         self.assertIsInstance(df, pd.DataFrame)
         self.assertIsInstance(cols, list)
-        self.assertGreater(len(cols), 3)  # Should include weather + price features
+        self.assertGreater(
+            len(cols), 3
+        )  # Should include weather + price features
 
 
 class TestSeasonalNaiveForecasting(unittest.TestCase):

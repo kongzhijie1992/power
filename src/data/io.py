@@ -65,6 +65,9 @@ def _cache_set(key: str, df: pd.DataFrame) -> None:
 
 
 def _s3_config() -> Optional[Tuple[str, str]]:
+    disable = os.getenv("S3_DISABLE") or os.getenv("S3_DISABLED")
+    if disable and disable.strip().lower() in {"1", "true", "yes"}:
+        return None
     bucket = os.getenv("S3_BUCKET") or "zkong-power"
     if not bucket:
         return None
@@ -77,7 +80,11 @@ def _s3_storage_options() -> dict:
     key = os.getenv("AWS_ACCESS_KEY_ID")
     secret = os.getenv("AWS_SECRET_ACCESS_KEY")
     token = os.getenv("AWS_SESSION_TOKEN")
-    region = os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION") or "eu-north-1"
+    region = (
+        os.getenv("AWS_DEFAULT_REGION")
+        or os.getenv("AWS_REGION")
+        or "eu-north-1"
+    )
     if key and secret:
         opts["key"] = key
         opts["secret"] = secret
@@ -176,7 +183,10 @@ def read_csv_indexed(path: Union[str, Path]) -> pd.DataFrame:
             return cached
     storage_options = _s3_storage_options() if _is_s3_path(resolved) else None
     df = pd.read_csv(
-        resolved, index_col=0, parse_dates=True, storage_options=storage_options
+        resolved,
+        index_col=0,
+        parse_dates=True,
+        storage_options=storage_options,
     )
     df.index = pd.to_datetime(df.index, utc=True, errors="coerce")
     df = df[~df.index.isna()]
@@ -220,7 +230,9 @@ def list_areas_with_file(filename: str) -> List[str]:
             fs = _get_s3_fs()
             bucket, prefix = _s3_config()  # type: ignore[misc]
             base = f"{bucket}/{prefix}".strip("/")
-            pattern = f"{base}/*/{filename}" if base else f"{bucket}/*/{filename}"
+            pattern = (
+                f"{base}/*/{filename}" if base else f"{bucket}/*/{filename}"
+            )
             for match in fs.glob(pattern):
                 parts = match.split("/")
                 if len(parts) >= 2:
@@ -388,10 +400,14 @@ def load_demand_series(area: str, prefer_parquet: bool = True):
             return _read_series_from_path(s3_path)
         if path.exists():
             return _read_series_from_path(path)
-    raise FileNotFoundError(f"No demand/load file found for area {area} in {DATA_DIR}")
+    raise FileNotFoundError(
+        f"No demand/load file found for area {area} in {DATA_DIR}"
+    )
 
 
-def load_tso_forecast_series(area: str, prefer_parquet: bool = True) -> pd.Series:
+def load_tso_forecast_series(
+    area: str, prefer_parquet: bool = True
+) -> pd.Series:
     """
     Load TSO day-ahead load forecast series for an area.
     Fallback order:
@@ -402,7 +418,9 @@ def load_tso_forecast_series(area: str, prefer_parquet: bool = True) -> pd.Serie
     return _select_series_from_frame(df)
 
 
-def load_tso_forecast_frame(area: str, prefer_parquet: bool = True) -> pd.DataFrame:
+def load_tso_forecast_frame(
+    area: str, prefer_parquet: bool = True
+) -> pd.DataFrame:
     """
     Load the raw TSO forecast frame for an area (including any metadata columns).
     Fallback order:
@@ -427,10 +445,14 @@ def load_tso_forecast_frame(area: str, prefer_parquet: bool = True) -> pd.DataFr
             return _read_forecast_frame_from_path(s3_path)
         if path.exists():
             return _read_forecast_frame_from_path(path)
-    raise FileNotFoundError(f"No TSO forecast file found for area {area} in {DATA_DIR}")
+    raise FileNotFoundError(
+        f"No TSO forecast file found for area {area} in {DATA_DIR}"
+    )
 
 
-def load_tso_forecast_publication(area: str, prefer_parquet: bool = True) -> pd.Series:
+def load_tso_forecast_publication(
+    area: str, prefer_parquet: bool = True
+) -> pd.Series:
     """Load publication timestamps for the TSO forecast, if present."""
     candidates = [
         DATA_DIR / area / "load_forecast.parquet",
@@ -466,14 +488,18 @@ def load_tso_forecast_publication(area: str, prefer_parquet: bool = True) -> pd.
                 series = pd.to_datetime(df[col], errors="coerce")
                 if series.notna().any():
                     if getattr(series.dt, "tz", None) is not None:
-                        series = series.dt.tz_convert("UTC").dt.tz_localize(None)
+                        series = series.dt.tz_convert("UTC").dt.tz_localize(
+                            None
+                        )
                     return series
         for col in df.columns:
             if "publication" in col:
                 series = pd.to_datetime(df[col], errors="coerce")
                 if series.notna().any():
                     if getattr(series.dt, "tz", None) is not None:
-                        series = series.dt.tz_convert("UTC").dt.tz_localize(None)
+                        series = series.dt.tz_convert("UTC").dt.tz_localize(
+                            None
+                        )
                     return series
     return pd.Series(dtype="datetime64[ns]")
 

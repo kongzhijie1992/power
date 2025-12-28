@@ -65,7 +65,9 @@ def add_gfs_features(
                     if dfw.index.tz is None:
                         dfw.index = dfw.index.tz_localize("UTC")
                     if dfw.index.tz is not None:
-                        dfw.index = dfw.index.tz_convert("UTC").tz_localize(None)
+                        dfw.index = dfw.index.tz_convert("UTC").tz_localize(
+                            None
+                        )
                 except Exception:
                     pass
 
@@ -95,15 +97,20 @@ def add_gfs_features(
                 if "dswrf" not in df.columns:
                     hour = history_index.hour
                     df["solar_proxy"] = (
-                        np.clip(np.cos(2 * np.pi * (hour - 6) / 24), 0, 1) * 800
+                        np.clip(np.cos(2 * np.pi * (hour - 6) / 24), 0, 1)
+                        * 800
                     )
                 return df
             except Exception as e:
-                logger.warning("Failed to load weather_csv %s: %s", weather_csv, e)
+                logger.warning(
+                    "Failed to load weather_csv %s: %s", weather_csv, e
+                )
 
     # If no local CSV provided or it failed, fall back to GRIB extraction if available
     if fetch_and_extract_point is None:
-        logger.info("GFS parser not available; returning synthetic weather proxies")
+        logger.info(
+            "GFS parser not available; returning synthetic weather proxies"
+        )
         idx = history_index
         hour = idx.hour
         wind_proxy = 8 + 3 * (np.sin(2 * np.pi * hour / 24) + 0.5)
@@ -124,7 +131,9 @@ def add_gfs_features(
         # convert to DataFrame and reindex to history_index
         df_list = []
         for v, s in (extracted or {}).items():
-            s.index = pd.to_datetime(s.index).tz_convert("UTC").tz_localize(None)
+            s.index = (
+                pd.to_datetime(s.index).tz_convert("UTC").tz_localize(None)
+            )
             df_list.append(s.rename(v))
         if not df_list:
             raise RuntimeError("No vars extracted from GFS")
@@ -137,6 +146,7 @@ def add_gfs_features(
         return df
     except Exception as e:
         logger.warning(
-            "Failed to extract features from GFS: %s; falling back to proxies", e
+            "Failed to extract features from GFS: %s; falling back to proxies",
+            e,
         )
         return add_gfs_features(history_index, lat, lon, varnames=None)

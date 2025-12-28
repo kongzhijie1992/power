@@ -135,7 +135,9 @@ class StructuralStackModel:
         blocks: List[Dict],
     ) -> Tuple[float, Dict]:
         if renewable_mw >= demand_mw:
-            return self.config.negative_price_floor, {"reason": "renewable_oversupply"}
+            return self.config.negative_price_floor, {
+                "reason": "renewable_oversupply"
+            }
 
         remaining = demand_mw - renewable_mw
         sorted_blocks = sorted(blocks, key=lambda b: b["marginal_cost"])
@@ -143,7 +145,9 @@ class StructuralStackModel:
         total_cap = sum(b["capacity"] for b in sorted_blocks)
 
         if remaining <= 0:
-            return self.config.negative_price_floor, {"reason": "no_thermal_needed"}
+            return self.config.negative_price_floor, {
+                "reason": "no_thermal_needed"
+            }
 
         for block in sorted_blocks:
             take = min(block["capacity"], remaining)
@@ -161,7 +165,9 @@ class StructuralStackModel:
         else:
             price = sorted_blocks[-1]["marginal_cost"]
 
-        reserve_margin = (total_cap - (demand_mw - renewable_mw)) / max(demand_mw, 1.0)
+        reserve_margin = (total_cap - (demand_mw - renewable_mw)) / max(
+            demand_mw, 1.0
+        )
         uplift = self._scarcity_uplift(reserve_margin)
         price_with_uplift = price + uplift
         return price_with_uplift, {
@@ -186,7 +192,9 @@ class StructuralStackModel:
         for ts, row in df.iterrows():
             demand = float(row.get("load_forecast", 0.0))
             wind = float(row.get("wind_actual", row.get("wind_forecast", 0.0)))
-            solar = float(row.get("solar_actual", row.get("solar_forecast", 0.0)))
+            solar = float(
+                row.get("solar_actual", row.get("solar_forecast", 0.0))
+            )
             renewable = max(0.0, wind + solar)
             blocks = self._available_blocks(row)
             price, detail = self._clear_price(demand, renewable, blocks)
@@ -206,7 +214,9 @@ class PlantStackModel(StructuralStackModel):
     """Structural model using plant-level stack instead of aggregated blocks."""
 
     def __init__(
-        self, plant_stack: PlantStack, config: Optional[StructuralConfig] = None
+        self,
+        plant_stack: PlantStack,
+        config: Optional[StructuralConfig] = None,
     ):
         super().__init__(config)
         self.plant_stack = plant_stack
@@ -220,10 +230,16 @@ class PlantStackModel(StructuralStackModel):
             if plant.get("is_dispatchable", True) is False:
                 continue
             fuel_price = self._fuel_price(row, plant["fuel"])
-            eff = float(plant["efficiency"]) if pd.notna(plant["efficiency"]) else 1.0
+            eff = (
+                float(plant["efficiency"])
+                if pd.notna(plant["efficiency"])
+                else 1.0
+            )
             eff = eff if eff > 0 else 1.0
             plant_avail_raw = plant.get("availability_factor", 1.0)
-            plant_avail = float(plant_avail_raw) if pd.notna(plant_avail_raw) else 1.0
+            plant_avail = (
+                float(plant_avail_raw) if pd.notna(plant_avail_raw) else 1.0
+            )
             srmc = (
                 fuel_price / eff
                 + co2_price * float(plant["co2_intensity"])
@@ -233,7 +249,9 @@ class PlantStackModel(StructuralStackModel):
                 {
                     "name": plant["name"],
                     "fuel": plant["fuel"],
-                    "capacity": plant["capacity_mw"] * system_avail * plant_avail,
+                    "capacity": plant["capacity_mw"]
+                    * system_avail
+                    * plant_avail,
                     "marginal_cost": srmc,
                 }
             )

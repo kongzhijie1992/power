@@ -103,7 +103,9 @@ def _load_token() -> str:
             if line.strip().startswith("ENTSOE_API_TOKEN="):
                 return line.split("=", 1)[1].strip()
 
-    raise SystemExit("ENTSOE_API_TOKEN not found in env, .env, or src/config.yaml")
+    raise SystemExit(
+        "ENTSOE_API_TOKEN not found in env, .env, or src/config.yaml"
+    )
 
 
 def _resolution_hours(text: str) -> float:
@@ -159,7 +161,9 @@ def _fetch_generation_xml(
             return resp.read()
     except HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")
-        raise SystemExit(f"ENTSO-E API request failed: {e.code} {detail[:500]}")
+        raise SystemExit(
+            f"ENTSO-E API request failed: {e.code} {detail[:500]}"
+        )
 
 
 def _accumulate_totals(
@@ -319,7 +323,9 @@ def main() -> None:
         hours: Dict[str, float] = defaultdict(float)
 
         ranges = list(
-            _chunk_date_ranges(start_date, end_date, max(int(args.chunk_days), 1))
+            _chunk_date_ranges(
+                start_date, end_date, max(int(args.chunk_days), 1)
+            )
         )
         print(f"Planned chunks: {len(ranges)} ({start_date} -> {end_date})")
 

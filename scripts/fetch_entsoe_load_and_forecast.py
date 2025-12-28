@@ -169,7 +169,9 @@ def _parse_timestamp(text: str) -> pd.Timestamp | None:
 def _extract_publication_times(xml_text: str) -> pd.Series:
     root = ET.fromstring(xml_text)
     root_created_text = _find_first_text(root, "createdDateTime")
-    root_created = _parse_timestamp(root_created_text) if root_created_text else pd.NaT
+    root_created = (
+        _parse_timestamp(root_created_text) if root_created_text else pd.NaT
+    )
 
     timestamps = []
     publications = []
@@ -179,7 +181,9 @@ def _extract_publication_times(xml_text: str) -> pd.Series:
             continue
         ts_created_text = _find_first_text(ts, "createdDateTime")
         ts_created = (
-            _parse_timestamp(ts_created_text) if ts_created_text else root_created
+            _parse_timestamp(ts_created_text)
+            if ts_created_text
+            else root_created
         )
         if pd.isna(ts_created):
             continue
@@ -213,7 +217,9 @@ def _extract_publication_times(xml_text: str) -> pd.Series:
     if not timestamps:
         return pd.Series(dtype="datetime64[ns]")
 
-    df = pd.DataFrame({"timestamp": timestamps, "publication_time": publications})
+    df = pd.DataFrame(
+        {"timestamp": timestamps, "publication_time": publications}
+    )
     df = df.dropna(subset=["timestamp", "publication_time"])
     if df.empty:
         return pd.Series(dtype="datetime64[ns]")
@@ -227,7 +233,9 @@ def _read_ts_csv(path: Path) -> pd.DataFrame:
     return df
 
 
-def _merge_timeseries(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+def _merge_timeseries(
+    existing: pd.DataFrame, new: pd.DataFrame
+) -> pd.DataFrame:
     combined = pd.concat([existing, new], axis=0)
     combined = combined[~combined.index.duplicated(keep="last")].sort_index()
     return combined
@@ -237,16 +245,20 @@ def fetch_load_and_forecast(
     client, area: str, start_date, end_date
 ) -> Tuple[pd.Series, pd.Series]:
     """Return actual load + day-ahead forecast as two Series (UTC-naive)."""
-    start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize("Europe/Brussels")
-    end_ts = (pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)).tz_localize(
+    start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize(
         "Europe/Brussels"
     )
+    end_ts = (
+        pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)
+    ).tz_localize("Europe/Brussels")
 
     candidates = [area, ALT_CODES.get(area), AREA_MAP.get(area)]
     last_error = None
     for code in [c for c in candidates if c]:
         try:
-            df = client.query_load_and_forecast(code, start=start_ts, end=end_ts)
+            df = client.query_load_and_forecast(
+                code, start=start_ts, end=end_ts
+            )
             if df is not None and len(df) > 0:
                 df.index = _normalize_index(df.index)
                 break
@@ -267,14 +279,18 @@ def fetch_load_and_forecast(
     else:
         col_lower = {c.lower(): c for c in df.columns}
         actual_col = (
-            col_lower.get("load") or col_lower.get("actual load") or list(df.columns)[0]
+            col_lower.get("load")
+            or col_lower.get("actual load")
+            or list(df.columns)[0]
         )
-        forecast_col = col_lower.get("day-ahead total load forecast") or col_lower.get(
-            "forecasted load"
-        )
+        forecast_col = col_lower.get(
+            "day-ahead total load forecast"
+        ) or col_lower.get("forecasted load")
         actual = df[actual_col] if actual_col in df.columns else df.iloc[:, 0]
         forecast = (
-            df[forecast_col] if forecast_col and forecast_col in df.columns else None
+            df[forecast_col]
+            if forecast_col and forecast_col in df.columns
+            else None
         )
 
     if forecast is None or forecast.empty:
@@ -291,7 +307,9 @@ def fetch_load_and_forecast(
                 continue
         for code in [c for c in candidates if c]:
             try:
-                forecast = client.query_load_forecast(code, start=start_ts, end=end_ts)
+                forecast = client.query_load_forecast(
+                    code, start=start_ts, end=end_ts
+                )
                 if forecast is not None and len(forecast) > 0:
                     forecast.index = _normalize_index(forecast.index)
                     break
@@ -310,16 +328,20 @@ def fetch_load_forecast_publication_times(
     raw_client, area: str, start_date, end_date
 ) -> pd.Series:
     """Return per-timestamp publication times for day-ahead load forecasts (UTC-naive)."""
-    start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize("Europe/Brussels")
-    end_ts = (pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)).tz_localize(
+    start_ts = pd.Timestamp(_parse_date(start_date)).tz_localize(
         "Europe/Brussels"
     )
+    end_ts = (
+        pd.Timestamp(_parse_date(end_date)) + pd.Timedelta(days=1)
+    ).tz_localize("Europe/Brussels")
 
     candidates = [area, ALT_CODES.get(area), AREA_MAP.get(area)]
     last_error = None
     for code in [c for c in candidates if c]:
         try:
-            xml_text = raw_client.query_load_forecast(code, start=start_ts, end=end_ts)
+            xml_text = raw_client.query_load_forecast(
+                code, start=start_ts, end=end_ts
+            )
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode("utf-8", errors="ignore")
             if not xml_text:
@@ -362,7 +384,9 @@ def _fetch_area_load_and_forecast(
             actual_chunks.append(act)
             forecast_chunk = fc.to_frame(name="tso_day_ahead_forecast")
             try:
-                pub = fetch_load_forecast_publication_times(raw_client, area, cs, ce)
+                pub = fetch_load_forecast_publication_times(
+                    raw_client, area, cs, ce
+                )
                 if pub is not None and not pub.empty:
                     pub = pub.reindex(forecast_chunk.index)
                     forecast_chunk["tso_publication_time_utc"] = pub
@@ -391,7 +415,8 @@ def _fetch_area_load_and_forecast(
     )
     actual = actual[(actual.index >= start_ts) & (actual.index <= end_ts)]
     forecast = forecast[
-        (forecast.index >= start_ts) & (forecast.index <= end_ts + pd.Timedelta(days=1))
+        (forecast.index >= start_ts)
+        & (forecast.index <= end_ts + pd.Timedelta(days=1))
     ]
 
     area_dir = DATA_DIR / area
@@ -424,14 +449,18 @@ def _fetch_area_load_and_forecast(
     write_frame(to_write_actual, actual_csv, index_label="datetime")
     write_frame(to_write_forecast, forecast_csv, index_label="datetime")
     print(f"✅ Saved actual -> {actual_csv} ({len(to_write_actual):,} rows)")
-    print(f"✅ Saved forecast -> {forecast_csv} ({len(to_write_forecast):,} rows)")
+    print(
+        f"✅ Saved forecast -> {forecast_csv} ({len(to_write_forecast):,} rows)"
+    )
 
     if parquet:
         write_frame(
-            to_write_actual, resolve_write_path(area_dir / "load_actual.parquet")
+            to_write_actual,
+            resolve_write_path(area_dir / "load_actual.parquet"),
         )
         write_frame(
-            to_write_forecast, resolve_write_path(area_dir / "load_forecast.parquet")
+            to_write_forecast,
+            resolve_write_path(area_dir / "load_forecast.parquet"),
         )
 
     return area, actual_csv, forecast_csv
@@ -440,11 +469,15 @@ def _fetch_area_load_and_forecast(
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--area", default="DE_LU")
-    p.add_argument("--areas", nargs="+", help="List of areas (overrides --area)")
+    p.add_argument(
+        "--areas", nargs="+", help="List of areas (overrides --area)"
+    )
     p.add_argument("--start-date", default="2023-01-01")
     p.add_argument("--end-date", default=dt.date.today().isoformat())
     p.add_argument("--chunk-days", type=int, default=90)
-    p.add_argument("--workers", type=int, default=0, help="0 uses a small auto pool")
+    p.add_argument(
+        "--workers", type=int, default=0, help="0 uses a small auto pool"
+    )
     p.add_argument(
         "--executor", choices=["thread", "process"], default="thread"
     )

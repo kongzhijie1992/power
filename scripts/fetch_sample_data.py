@@ -25,7 +25,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.ingest.ingest_all import synthetic_area_series
-from src.data.io import DATA_DIR, resolve_write_path, save_series_csv, write_frame
+from src.data.io import (
+    DATA_DIR,
+    resolve_write_path,
+    save_series_csv,
+    write_frame,
+)
 
 
 def download_open_meteo(lat, lon, start_date, end_date, out_csv_path):
@@ -75,14 +80,20 @@ def main():
     end = dt.date.today()
     start = end - dt.timedelta(days=days)
     start_str = start.isoformat()
-    end_str = (end - dt.timedelta(days=1)).isoformat()  # end param is inclusive
+    end_str = (
+        end - dt.timedelta(days=1)
+    ).isoformat()  # end param is inclusive
     weather_dir = DATA_DIR / "weather"
     weather_csv = weather_dir / f"{area}_weather.csv"
     try:
-        download_open_meteo(args.lat, args.lon, start_str, end_str, weather_csv)
+        download_open_meteo(
+            args.lat, args.lon, start_str, end_str, weather_csv
+        )
     except Exception as e:
         print("Weather download failed:", e)
-        print("You can still run the pipeline using synthetic weather proxies.")
+        print(
+            "You can still run the pipeline using synthetic weather proxies."
+        )
 
     print("\nDone.")
 

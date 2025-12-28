@@ -24,7 +24,9 @@ def get_client(api_key: str = None):
     cfg = _load_config()
     token = api_key or (cfg.get("entsoe") or {}).get("api_key")
     if token is None:
-        raise ValueError("ENTSO-E API key not found. Put it in src/config.yaml")
+        raise ValueError(
+            "ENTSO-E API key not found. Put it in src/config.yaml"
+        )
     if EntsoePandasClient is None:
         raise ImportError(
             "entsoe-py library not available. Install `entsoe-py` in your environment."
@@ -118,7 +120,10 @@ def fetch_day_ahead_prices(
     start_ts = _ensure_entsoe_tz(start)
     end_ts = _ensure_entsoe_tz(end)
     logger.info(
-        "Fetching day-ahead prices for %s from %s to %s", area, start_ts, end_ts
+        "Fetching day-ahead prices for %s from %s to %s",
+        area,
+        start_ts,
+        end_ts,
     )
     series = client.query_day_ahead_prices(area, start=start_ts, end=end_ts)
     # entsoe-py returns timezone-aware series (Europe timezone); convert to UTC naive

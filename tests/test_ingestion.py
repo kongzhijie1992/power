@@ -9,6 +9,7 @@ import unittest
 import pandas as pd
 import numpy as np
 import datetime as dt
+import os
 import tempfile
 import shutil
 
@@ -60,6 +61,8 @@ class TestDataPersistence(unittest.TestCase):
     def setUp(self):
         """Create temporary directory for test data."""
         self.test_dir = tempfile.mkdtemp()
+        self.original_s3_disable = os.getenv("S3_DISABLE")
+        os.environ["S3_DISABLE"] = "1"
         # Override DATA_DIR for tests
         import src.data.io
 
@@ -69,6 +72,10 @@ class TestDataPersistence(unittest.TestCase):
     def tearDown(self):
         """Clean up temporary directory."""
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        if self.original_s3_disable is None:
+            os.environ.pop("S3_DISABLE", None)
+        else:
+            os.environ["S3_DISABLE"] = self.original_s3_disable
         import src.data.io
 
         src.data.io.DATA_DIR = self.original_data_dir
@@ -107,13 +114,17 @@ class TestDataPersistence(unittest.TestCase):
 
         # Create new data with 2-day overlap
         end = s1.index.max()
-        idx_new = pd.date_range(end - pd.Timedelta(days=2), periods=72, freq="h")
+        idx_new = pd.date_range(
+            end - pd.Timedelta(days=2), periods=72, freq="h"
+        )
         s2 = pd.Series(np.random.uniform(30, 80, len(idx_new)), index=idx_new)
 
         # Load and combine
         loaded = load_existing(area)
         combined = pd.concat([loaded, s2[~s2.index.isin(loaded.index)]])
-        combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+        combined = combined[
+            ~combined.index.duplicated(keep="last")
+        ].sort_index()
         save_combined(combined, area)
 
         # Verify
@@ -128,8 +139,16 @@ class TestIncrementalUpdate(unittest.TestCase):
         """Test that incremental update creates data when none exists."""
         # This test would require mocking ENTSO-E API
         # For now, we test that load_existing returns empty when no data
+        original_s3_disable = os.getenv("S3_DISABLE")
+        os.environ["S3_DISABLE"] = "1"
         area = "TEST_AREA"
-        existing = load_existing(area)
+        try:
+            existing = load_existing(area)
+        finally:
+            if original_s3_disable is None:
+                os.environ.pop("S3_DISABLE", None)
+            else:
+                os.environ["S3_DISABLE"] = original_s3_disable
         self.assertEqual(len(existing), 0)
 
 

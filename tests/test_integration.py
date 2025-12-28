@@ -53,7 +53,10 @@ class TestFullPipeline(unittest.TestCase):
         """Test pipeline: backtest → dispatch."""
         # Run backtest
         results = walk_forward_backtest(
-            self.prices, seasonal_naive_forecast, train_window_days=30, horizon_days=7
+            self.prices,
+            seasonal_naive_forecast,
+            train_window_days=30,
+            horizon_days=7,
         )
 
         # Use results to get sample forecast
@@ -84,7 +87,10 @@ class TestFullPipeline(unittest.TestCase):
 
         # 3. Backtest
         results = walk_forward_backtest(
-            prices, seasonal_naive_forecast, train_window_days=40, horizon_days=7
+            prices,
+            seasonal_naive_forecast,
+            train_window_days=40,
+            horizon_days=7,
         )
         # Results is DataFrame with 'rmse' column
         self.assertIn("rmse", results.columns)
@@ -98,7 +104,9 @@ class TestFullPipeline(unittest.TestCase):
         units = [{"name": "gen", "capacity": 300, "marginal_cost": 30}]
         for demand in forecast[:24]:
             result = merit_order_clearing(demand, units)
-            dispatched = sum(item["dispatched_mw"] for item in result["dispatch"])
+            dispatched = sum(
+                item["dispatched_mw"] for item in result["dispatch"]
+            )
             self.assertAlmostEqual(dispatched, demand, places=1)
 
     def test_uc_dispatch_integration(self):
@@ -166,7 +174,10 @@ class TestPipelineDataFlow(unittest.TestCase):
     def test_no_data_leakage_in_backtest(self):
         """Test that backtest doesn't leak future data."""
         results = walk_forward_backtest(
-            self.prices, seasonal_naive_forecast, train_window_days=30, horizon_days=7
+            self.prices,
+            seasonal_naive_forecast,
+            train_window_days=30,
+            horizon_days=7,
         )
 
         # Should have results (DataFrame with rmse column)
@@ -253,10 +264,16 @@ class TestPipelineConsistency(unittest.TestCase):
         prices = synthetic_area_series("DE", days=90)
 
         results1 = walk_forward_backtest(
-            prices, seasonal_naive_forecast, train_window_days=40, horizon_days=7
+            prices,
+            seasonal_naive_forecast,
+            train_window_days=40,
+            horizon_days=7,
         )
         results2 = walk_forward_backtest(
-            prices, seasonal_naive_forecast, train_window_days=40, horizon_days=7
+            prices,
+            seasonal_naive_forecast,
+            train_window_days=40,
+            horizon_days=7,
         )
 
         # Results should be identical DataFrames

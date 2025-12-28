@@ -22,7 +22,10 @@ BASE_URL = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
 
 
 def _make_gfs_filename(
-    run_dt: dt.datetime, hour_str: int = 0, resolution: str = "0p25", fh: int = 0
+    run_dt: dt.datetime,
+    hour_str: int = 0,
+    resolution: str = "0p25",
+    fh: int = 0,
 ):
     # example file: gfs.t00z.pgrb2.0p25.f000
     hh = run_dt.hour
@@ -32,7 +35,9 @@ def _make_gfs_filename(
 def _make_gfs_url(run_dt: dt.datetime, resolution: str = "0p25", fh: int = 0):
     ymd = run_dt.strftime("%Y%m%d")
     hh = run_dt.hour
-    fname = _make_gfs_filename(run_dt, hour_str=hh, resolution=resolution, fh=fh)
+    fname = _make_gfs_filename(
+        run_dt, hour_str=hh, resolution=resolution, fh=fh
+    )
     # path pattern used by NOMADS
     return f"{BASE_URL}/gfs.{ymd}/{hh:02d}/atmos/{fname}"
 
@@ -50,7 +55,9 @@ def download_gfs_analysis(
     run_dt = run_dt or dt.datetime.utcnow()
     if dest_dir is None:
         base = os.getenv("GFS_CACHE_DIR")
-        root = Path(base) if base else Path(tempfile.gettempdir()) / "power_gfs"
+        root = (
+            Path(base) if base else Path(tempfile.gettempdir()) / "power_gfs"
+        )
         dest_dir = root / run_dt.strftime("%Y%m%d") / f"{run_dt.hour:02d}"
     dest_dir = Path(dest_dir).resolve()
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -81,7 +88,9 @@ def parse_grib_to_xarray(path: Path, filter_by_keys=None):
     Returns xarray Dataset. If cfgrib/xarray not available, raises ImportError.
     """
     try:
-        ds = xr.open_dataset(path, engine="cfgrib", backend_kwargs={"errors": "ignore"})
+        ds = xr.open_dataset(
+            path, engine="cfgrib", backend_kwargs={"errors": "ignore"}
+        )
         if filter_by_keys:
             # user may filter dataset variables afterwards
             pass
@@ -92,7 +101,11 @@ def parse_grib_to_xarray(path: Path, filter_by_keys=None):
 
 
 def fetch_and_extract_point(
-    lat: float, lon: float, run_dt: dt.datetime = None, fh: int = 0, varnames=None
+    lat: float,
+    lon: float,
+    run_dt: dt.datetime = None,
+    fh: int = 0,
+    varnames=None,
 ):
     """Download GFS file for `run_dt` and `fh`, parse it and extract nearest-gridpoint timeseries for `varnames`.
 
@@ -122,7 +135,9 @@ def fetch_and_extract_point(
         else ("lon" if "lon" in ds.coords else None)
     )
     if lat_name is None or lon_name is None:
-        raise RuntimeError("Unable to locate lat/lon coordinates in GRIB dataset")
+        raise RuntimeError(
+            "Unable to locate lat/lon coordinates in GRIB dataset"
+        )
     # compute absolute difference and find nearest idx
     absdiff = (abs(ds[lat_name] - lat)).argmin().item(), (
         abs(ds[lon_name] - lon)

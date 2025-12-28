@@ -40,7 +40,9 @@ def add_local_time_features(
         raise TypeError("expected DatetimeIndex for local feature creation")
     utc = df.index
     if utc.tz is None:
-        raise ValueError("index must be tz-aware UTC before adding local features")
+        raise ValueError(
+            "index must be tz-aware UTC before adding local features"
+        )
     local = utc.tz_convert(tz)
     dst_offset = local.map(
         lambda ts: (ts.utcoffset() or timedelta(0)).total_seconds() / 3600
@@ -48,7 +50,9 @@ def add_local_time_features(
     out = df.copy()
     out[f"{prefix}_hour_local"] = local.hour
     out[f"{prefix}_dow"] = local.dayofweek
-    out[f"{prefix}_is_dst"] = local.map(lambda ts: int(ts.dst() != timedelta(0)))
+    out[f"{prefix}_is_dst"] = local.map(
+        lambda ts: int(ts.dst() != timedelta(0))
+    )
     out[f"{prefix}_dst_offset_hours"] = dst_offset
     if extra_holidays:
         hol_set = {h.date() for h in extra_holidays}

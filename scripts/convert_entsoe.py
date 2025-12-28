@@ -27,7 +27,9 @@ from src.data.io import resolve_write_path, write_frame
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--input", required=True, help="Path to GUI CSV export")
-    p.add_argument("--output", required=True, help="Path to write processed CSV")
+    p.add_argument(
+        "--output", required=True, help="Path to write processed CSV"
+    )
     p.add_argument(
         "--sequence",
         type=int,
@@ -41,10 +43,14 @@ def main():
         help="Write both Sequence 1 and Sequence 2 outputs",
     )
     p.add_argument(
-        "--resample", default="H", help="Pandas resample rule, e.g. H for hourly"
+        "--resample",
+        default="H",
+        help="Pandas resample rule, e.g. H for hourly",
     )
     p.add_argument(
-        "--tz", default="UTC", help="Timezone to localize timestamps to (e.g. UTC)"
+        "--tz",
+        default="UTC",
+        help="Timezone to localize timestamps to (e.g. UTC)",
     )
     args = p.parse_args()
 
@@ -57,9 +63,12 @@ def main():
     df = pd.read_csv(src, dtype=str)
 
     # Column names observed in GUI exports
-    mtu_col = next((c for c in df.columns if "MTU" in c or "MTU" in c), df.columns[0])
+    mtu_col = next(
+        (c for c in df.columns if "MTU" in c or "MTU" in c), df.columns[0]
+    )
     price_col = next(
-        (c for c in df.columns if "Day-ahead Price" in c or "Day-ahead" in c), None
+        (c for c in df.columns if "Day-ahead Price" in c or "Day-ahead" in c),
+        None,
     )
     seq_col = next((c for c in df.columns if "Sequence" in c), None)
 
@@ -121,8 +130,12 @@ def main():
         s2 = process_for_sequence(2)
         out1 = resolve_write_path(out1)
         out2 = resolve_write_path(out2)
-        write_frame(s1.rename("value").to_frame(), out1, index_label="datetime")
-        write_frame(s2.rename("value").to_frame(), out2, index_label="datetime")
+        write_frame(
+            s1.rename("value").to_frame(), out1, index_label="datetime"
+        )
+        write_frame(
+            s2.rename("value").to_frame(), out2, index_label="datetime"
+        )
         print(f"Wrote {len(s1)} rows to {out1}")
         print(f"Wrote {len(s2)} rows to {out2}")
         outputs = [out1, out2]

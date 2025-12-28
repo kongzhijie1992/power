@@ -41,11 +41,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-
 def _load_price_series(area: str, days: int | None = None) -> pd.Series:
     """Load price series and optionally limit to trailing N days."""
     series = load_price_series(area).sort_index()
-    if isinstance(series.index, pd.DatetimeIndex) and series.index.tz is not None:
+    if (
+        isinstance(series.index, pd.DatetimeIndex)
+        and series.index.tz is not None
+    ):
         series.index = series.index.tz_convert("UTC").tz_localize(None)
     if days:
         cutoff = series.index.max() - pd.Timedelta(days=days)
@@ -62,7 +64,11 @@ def _forecast_func(
 ) -> pd.Series:
     """Train + forecast using LightGBM with lags/seasonality (no look-ahead)."""
     return forecast_price(
-        history, weather=weather, country=country, horizon_days=days, params=params
+        history,
+        weather=weather,
+        country=country,
+        horizon_days=days,
+        params=params,
     )
 
 
@@ -108,7 +114,8 @@ def evaluate_area(
         train_start = ref - pd.Timedelta(days=train_window)
         train = prices[(prices.index > train_start) & (prices.index <= ref)]
         truth = prices[
-            (prices.index > ref) & (prices.index <= ref + pd.Timedelta(days=horizon))
+            (prices.index > ref)
+            & (prices.index <= ref + pd.Timedelta(days=horizon))
         ]
         if len(train) < 24 or truth.empty:
             continue
@@ -126,7 +133,10 @@ def evaluate_area(
         logger.warning("%s: backtest produced no windows", area)
     else:
         logger.info(
-            "%s: backtest windows=%d mean RMSE=%.2f", area, len(bt), bt["rmse"].mean()
+            "%s: backtest windows=%d mean RMSE=%.2f",
+            area,
+            len(bt),
+            bt["rmse"].mean(),
         )
 
     # full-history forward-only predictions (no look-ahead)
@@ -146,9 +156,13 @@ def evaluate_area(
             step_hours=history_step_hours,
         )
         if hist_preds.empty:
-            logger.warning("%s: history predictions empty (not enough data)", area)
+            logger.warning(
+                "%s: history predictions empty (not enough data)", area
+            )
         else:
-            hist_rmse = (hist_preds["pred"] - hist_preds["actual"]).pow(2).mean() ** 0.5
+            hist_rmse = (hist_preds["pred"] - hist_preds["actual"]).pow(
+                2
+            ).mean() ** 0.5
             logger.info(
                 "%s: history predictions points=%d RMSE=%.2f",
                 area,
@@ -160,7 +174,9 @@ def evaluate_area(
                     DATA_DIR / area / "price_history_predictions.csv"
                 )
                 write_frame(hist_preds, hist_out, index_label="datetime")
-                logger.info("%s: saved history predictions -> %s", area, hist_out)
+                logger.info(
+                    "%s: saved history predictions -> %s", area, hist_out
+                )
 
     # forward forecast for dashboarding
     fc = _forecast_func(
@@ -208,7 +224,9 @@ def main(
                 enable_history=enable_history,
                 backtest_windows=backtest_windows,
             )
-            rmse_mean = float(bt["rmse"].mean()) if not bt.empty else float("nan")
+            rmse_mean = (
+                float(bt["rmse"].mean()) if not bt.empty else float("nan")
+            )
             summary.append((area, len(bt), rmse_mean))
         except Exception as e:
             logger.exception("Failed evaluation for %s: %s", area, e)
@@ -224,12 +242,19 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--area", help="Single area code (e.g., DE_LU)")
     p.add_argument(
-        "--areas", nargs="+", help="List of areas to evaluate (overrides --area)"
+        "--areas",
+        nargs="+",
+        help="List of areas to evaluate (overrides --area)",
     )
     p.add_argument(
-        "--days", type=int, default=None, help="Limit to trailing N days of history"
+        "--days",
+        type=int,
+        default=None,
+        help="Limit to trailing N days of history",
     )
-    p.add_argument("--horizon", type=int, default=7, help="Forecast horizon in days")
+    p.add_argument(
+        "--horizon", type=int, default=7, help="Forecast horizon in days"
+    )
     p.add_argument(
         "--train-window",
         type=int,
@@ -237,7 +262,9 @@ if __name__ == "__main__":
         help="Training window in days for walk-forward",
     )
     p.add_argument(
-        "--no-save", action="store_true", help="Do not persist price_forecast.csv"
+        "--no-save",
+        action="store_true",
+        help="Do not persist price_forecast.csv",
     )
     p.add_argument(
         "--weather-template",

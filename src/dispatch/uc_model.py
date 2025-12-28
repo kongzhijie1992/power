@@ -6,7 +6,12 @@ from typing import Dict, Iterable, List, Optional, Tuple
 import pandas as pd
 import pulp
 
-from .costing import Unit, compute_segment_prices, coerce_hours_index, net_demand
+from .costing import (
+    Unit,
+    compute_segment_prices,
+    coerce_hours_index,
+    net_demand,
+)
 
 
 @dataclass(frozen=True)
@@ -31,7 +36,12 @@ def solve_uc_day(
     *,
     horizon_h: int = 24,
     demand_col: str = "demand_mw",
-    renewable_cols: Iterable[str] = ("wind_mw", "solar_mw", "ror_mw", "must_run_mw"),
+    renewable_cols: Iterable[str] = (
+        "wind_mw",
+        "solar_mw",
+        "ror_mw",
+        "must_run_mw",
+    ),
     eua_col: str = "eua_price",
     fuel_price_cols: Optional[Dict[str, str]] = None,
     availability: Optional[pd.DataFrame] = None,
@@ -47,7 +57,9 @@ def solve_uc_day(
     """
     idx = coerce_hours_index(system, horizon_h=horizon_h)
     sys = system.loc[idx]
-    demand = net_demand(sys, demand_col=demand_col, renewable_cols=renewable_cols)
+    demand = net_demand(
+        sys, demand_col=demand_col, renewable_cols=renewable_cols
+    )
 
     if fuel_price_cols is None:
         fuel_price_cols = {
@@ -67,7 +79,9 @@ def solve_uc_day(
     eua = pd.to_numeric(sys[eua_col], errors="coerce").fillna(0.0)
 
     if availability is None:
-        availability = pd.DataFrame(1.0, index=idx, columns=[u.unit_id for u in units])
+        availability = pd.DataFrame(
+            1.0, index=idx, columns=[u.unit_id for u in units]
+        )
     else:
         availability = availability.reindex(
             index=idx, columns=[u.unit_id for u in units]
@@ -100,7 +114,9 @@ def solve_uc_day(
             )
             for k in range(1, n_segments + 1):
                 p_seg[(unit.unit_id, t, k)] = pulp.LpVariable(
-                    f"pseg_{unit.unit_id}_{t}_{k}", lowBound=0, cat="Continuous"
+                    f"pseg_{unit.unit_id}_{t}_{k}",
+                    lowBound=0,
+                    cat="Continuous",
                 )
 
     obj_terms: List[pulp.LpAffineExpression] = []
@@ -122,9 +138,13 @@ def solve_uc_day(
             pmin_t = float(unit.p_min_mw) * avail
             pmax_t = float(unit.p_max_mw) * avail
 
-            obj_terms.append(float(prices[0]) * pmin_t * u_var[(unit.unit_id, t)])
+            obj_terms.append(
+                float(prices[0]) * pmin_t * u_var[(unit.unit_id, t)]
+            )
             for k in range(1, n_segments + 1):
-                obj_terms.append(float(prices[k]) * p_seg[(unit.unit_id, t, k)])
+                obj_terms.append(
+                    float(prices[k]) * p_seg[(unit.unit_id, t, k)]
+                )
             if unit.startup_cost_eur:
                 obj_terms.append(
                     float(unit.startup_cost_eur) * v_var[(unit.unit_id, t)]
@@ -135,13 +155,16 @@ def solve_uc_day(
             ] + pulp.lpSum(
                 p_seg[(unit.unit_id, t, k)] for k in range(1, n_segments + 1)
             )
-            prob += p_var[(unit.unit_id, t)] <= pmax_t * u_var[(unit.unit_id, t)]
+            prob += (
+                p_var[(unit.unit_id, t)] <= pmax_t * u_var[(unit.unit_id, t)]
+            )
 
             headroom = max(0.0, pmax_t - pmin_t)
             seg_cap = headroom / max(1, n_segments)
             for k in range(1, n_segments + 1):
                 prob += (
-                    p_seg[(unit.unit_id, t, k)] <= seg_cap * u_var[(unit.unit_id, t)]
+                    p_seg[(unit.unit_id, t, k)]
+                    <= seg_cap * u_var[(unit.unit_id, t)]
                 )
 
             if unit.is_must_run and pmin_t > 0:
@@ -152,9 +175,9 @@ def solve_uc_day(
     prob += pulp.lpSum(obj_terms)
 
     for t in idx:
-        prob += pulp.lpSum(p_var[(unit.unit_id, t)] for unit in units) == float(
-            demand.loc[t]
-        )
+        prob += pulp.lpSum(
+            p_var[(unit.unit_id, t)] for unit in units
+        ) == float(demand.loc[t])
 
     for unit in units:
         for j, t in enumerate(idx):
@@ -178,14 +201,19 @@ def solve_uc_day(
             for j, t in enumerate(idx):
                 end = min(j + up, len(idx))
                 prob += (
-                    pulp.lpSum(u_var[(unit.unit_id, idx[k])] for k in range(j, end))
+                    pulp.lpSum(
+                        u_var[(unit.unit_id, idx[k])] for k in range(j, end)
+                    )
                     >= up * v_var[(unit.unit_id, t)]
                 )
         if down > 0:
             for j, t in enumerate(idx):
                 end = min(j + down, len(idx))
                 prob += (
-                    pulp.lpSum(1 - u_var[(unit.unit_id, idx[k])] for k in range(j, end))
+                    pulp.lpSum(
+                        1 - u_var[(unit.unit_id, idx[k])]
+                        for k in range(j, end)
+                    )
                     >= down * w_var[(unit.unit_id, t)]
                 )
 
@@ -199,9 +227,13 @@ def solve_uc_day(
             pmax_t = float(unit.p_max_mw) * avail_t
             pmax_prev = float(unit.p_max_mw) * avail_prev
 
-            ru = float(unit.ramp_up_mw_per_h if unit.ramp_up_mw_per_h > 0 else pmax_t)
+            ru = float(
+                unit.ramp_up_mw_per_h if unit.ramp_up_mw_per_h > 0 else pmax_t
+            )
             rd = float(
-                unit.ramp_down_mw_per_h if unit.ramp_down_mw_per_h > 0 else pmax_prev
+                unit.ramp_down_mw_per_h
+                if unit.ramp_down_mw_per_h > 0
+                else pmax_prev
             )
 
             prob += p_var[(unit.unit_id, t)] - p_var[
@@ -233,7 +265,9 @@ def solve_uc_day(
             w_df.loc[t, unit.unit_id] = int(
                 round(w_var[(unit.unit_id, t)].value() or 0)
             )
-            p_df.loc[t, unit.unit_id] = float(p_var[(unit.unit_id, t)].value() or 0.0)
+            p_df.loc[t, unit.unit_id] = float(
+                p_var[(unit.unit_id, t)].value() or 0.0
+            )
 
     run_len = pd.DataFrame(0, index=idx, columns=unit_ids, dtype=int)
     for unit in units:

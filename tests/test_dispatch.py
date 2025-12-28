@@ -40,7 +40,9 @@ class TestMeritOrderClearing(unittest.TestCase):
         result = merit_order_clearing(self.demand, self.generators)
         for d in result["dispatch"]:
             pmax = next(
-                u["capacity"] for u in self.generators if u["name"] == d["name"]
+                u["capacity"]
+                for u in self.generators
+                if u["name"] == d["name"]
             )
             self.assertLessEqual(d["dispatched_mw"], pmax)
 
@@ -256,7 +258,9 @@ class TestDispatchEdgeCases(unittest.TestCase):
         self.assertIn("dispatch", result)
         self.assertIn("clearing_price", result)
         # Should dispatch at full capacity
-        total_dispatched = sum(item["dispatched_mw"] for item in result["dispatch"])
+        total_dispatched = sum(
+            item["dispatched_mw"] for item in result["dispatch"]
+        )
         self.assertEqual(total_dispatched, 100)
 
     def test_uc_single_unit(self):

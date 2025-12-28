@@ -31,7 +31,9 @@ if load_dotenv is not None:
 
 from src.data import io as data_io
 
-if not hasattr(data_io, "write_frame") or not hasattr(data_io, "resolve_write_path"):
+if not hasattr(data_io, "write_frame") or not hasattr(
+    data_io, "resolve_write_path"
+):
     data_io = importlib.reload(data_io)
 
 DATA_DIR = data_io.DATA_DIR
@@ -44,14 +46,18 @@ load_price_series = data_io.load_price_series
 read_frame = data_io.read_frame
 resolve_write_path = getattr(data_io, "resolve_write_path", lambda p: p)
 
+
 def _fallback_write_frame(df, path, index_label=None, index=True):
     target = resolve_write_path(path)
     Path(target).parent.mkdir(parents=True, exist_ok=True)
     if str(target).endswith(".parquet"):
         df.to_parquet(target)
     else:
-        df.to_csv(target, index=index, index_label=index_label if index else None)
+        df.to_csv(
+            target, index=index, index_label=index_label if index else None
+        )
     return target
+
 
 write_frame = getattr(data_io, "write_frame", _fallback_write_frame)
 path_exists = getattr(data_io, "path_exists", lambda p: Path(p).exists())
@@ -182,14 +188,20 @@ def _pyecharts_timeseries_line(
         xaxis_opts=opts.AxisOpts(
             type_="category",
             boundary_gap=False,
-            axislabel_opts=opts.LabelOpts(rotate=45, interval="auto", margin=14),
+            axislabel_opts=opts.LabelOpts(
+                rotate=45, interval="auto", margin=14
+            ),
         ),
-        yaxis_opts=opts.AxisOpts(type_="value", name=yaxis_title, min_="dataMin", max_="dataMax"),
+        yaxis_opts=opts.AxisOpts(
+            type_="value", name=yaxis_title, min_="dataMin", max_="dataMax"
+        ),
     )
     if legend_exclude and chart.options.get("legend"):
         legend = chart.options["legend"][0]
         data = legend.get("data", [])
-        legend["data"] = [name for name in data if name not in set(legend_exclude)]
+        legend["data"] = [
+            name for name in data if name not in set(legend_exclude)
+        ]
     return chart
 
 
@@ -290,7 +302,9 @@ def _load_secrets_into_env():
     if not needs_entsoe and not needs_tv and not needs_s3:
         return
     try:
-        token = st.secrets.get("ENTSOE_API_TOKEN") or st.secrets.get("ENTSOE_TOKEN")
+        token = st.secrets.get("ENTSOE_API_TOKEN") or st.secrets.get(
+            "ENTSOE_TOKEN"
+        )
         tv_user = st.secrets.get("TV_USERNAME")
         tv_pwd = st.secrets.get("TV_PASSWORD")
         s3_secret_map = {k: st.secrets.get(k) for k in s3_keys}
@@ -338,7 +352,10 @@ def _try_git_lfs_pull(include_path: str) -> tuple[bool, str]:
         )
         out = (proc.stdout or "") + (proc.stderr or "")
         if proc.returncode != 0:
-            return False, out.strip() or f"git lfs pull failed (code={proc.returncode})"
+            return (
+                False,
+                out.strip() or f"git lfs pull failed (code={proc.returncode})",
+            )
         return True, out.strip() or "git lfs pull succeeded"
     except Exception as e:  # noqa: BLE001
         return False, str(e)
@@ -468,7 +485,9 @@ def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
         if tso_pub is not None and not tso_pub.empty:
             merged["tso_publication_time_utc"] = tso_pub.reindex(idx_union)
         elif "tso_publication_time_utc" in fc.columns:
-            pub = pd.to_datetime(fc["tso_publication_time_utc"], errors="coerce")
+            pub = pd.to_datetime(
+                fc["tso_publication_time_utc"], errors="coerce"
+            )
             if getattr(pub.dt, "tz", None) is not None:
                 pub = pub.dt.tz_convert("UTC").dt.tz_localize(None)
             merged["tso_publication_time_utc"] = pub.reindex(idx_union)
@@ -489,7 +508,10 @@ def load_price_data(
     area: str,
 ) -> Tuple[pd.Series, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     actual = load_price_series(area).sort_index()
-    if isinstance(actual.index, pd.DatetimeIndex) and actual.index.tz is not None:
+    if (
+        isinstance(actual.index, pd.DatetimeIndex)
+        and actual.index.tz is not None
+    ):
         actual.index = actual.index.tz_convert("UTC").tz_localize(None)
 
     fwd_path = DATA_DIR / area / "price_forecast.csv"
@@ -575,7 +597,9 @@ def demand_tab():
         plot_df = plot_df.join(quantiles, how="left")
     if "tso_publication_time_utc" in plot_df.columns:
         plot_df["tso_pub_local"] = _format_timestamp_series(
-            plot_df["tso_publication_time_utc"], timezone, include_tz_label=True
+            plot_df["tso_publication_time_utc"],
+            timezone,
+            include_tz_label=True,
         )
     if fast_plot:
         plot_df = _downsample_indexed(plot_df, max_plot_points)
@@ -616,11 +640,17 @@ def demand_tab():
     if "actual_load" in plot_df:
         actual_updates = [f"{ts}{tz_label}" for ts in x]
         series.append(
-            ("Actual load", _series_to_list(plot_df["actual_load"]), {"width": 1.5})
+            (
+                "Actual load",
+                _series_to_list(plot_df["actual_load"]),
+                {"width": 1.5},
+            )
         )
     if "tso_forecast" in plot_df:
         if "tso_pub_local" in plot_df:
-            tso_updates = plot_df["tso_pub_local"].fillna("n/a").astype(str).tolist()
+            tso_updates = (
+                plot_df["tso_pub_local"].fillna("n/a").astype(str).tolist()
+            )
         else:
             tso_updates = ["n/a"] * len(plot_df)
         series.append(
@@ -679,7 +709,9 @@ def demand_tab():
         table_out = table_out.rename(columns={"index": "datetime"})
     st.write("Data table")
     if len(table_out) > max_table_rows:
-        st.caption(f"Showing last {max_table_rows:,} rows (of {len(table_out):,}) for performance.")
+        st.caption(
+            f"Showing last {max_table_rows:,} rows (of {len(table_out):,}) for performance."
+        )
         table_out = table_out.tail(max_table_rows)
     st.dataframe(table_out, use_container_width=True)
 
@@ -701,7 +733,11 @@ def price_tab():
     )
 
     actual, forward, history = load_price_data(area)
-    if actual.empty and (forward is None or forward.empty) and (history is None or history.empty):
+    if (
+        actual.empty
+        and (forward is None or forward.empty)
+        and (history is None or history.empty)
+    ):
         st.info("No price data available for this area.")
         return
 
@@ -769,7 +805,9 @@ def price_tab():
     for obj in [actual_plot, history_plot, forward_plot]:
         if obj is None or getattr(obj, "empty", True):
             continue
-        idx_union = obj.index if idx_union is None else idx_union.union(obj.index)
+        idx_union = (
+            obj.index if idx_union is None else idx_union.union(obj.index)
+        )
     if idx_union is None or len(idx_union) == 0:
         st.info("No price data to plot.")
         return
@@ -782,7 +820,9 @@ def price_tab():
         merged["hist_pred"] = history_plot["pred"].reindex(idx_union)
     if forward_plot is not None and "mean" in forward_plot:
         merged["fwd_mean"] = forward_plot["mean"].reindex(idx_union)
-    if forward_plot is not None and {"q10", "q90"}.issubset(forward_plot.columns):
+    if forward_plot is not None and {"q10", "q90"}.issubset(
+        forward_plot.columns
+    ):
         merged["fwd_q10"] = forward_plot["q10"].reindex(idx_union)
         merged["fwd_q90"] = forward_plot["q90"].reindex(idx_union)
 
@@ -862,7 +902,11 @@ def _load_market_commodities() -> pd.DataFrame:
         MARKET_DIR / "commodities.csv",
     ]
     for path in candidates:
-        if isinstance(path, Path) and path.exists() and _is_git_lfs_pointer(path):
+        if (
+            isinstance(path, Path)
+            and path.exists()
+            and _is_git_lfs_pointer(path)
+        ):
             continue
         try:
             df = read_frame(path)
@@ -895,7 +939,11 @@ def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
 
     user = os.getenv("TV_USERNAME")
     pwd = os.getenv("TV_PASSWORD")
-    tv = TvDatafeed(username=user, password=pwd) if user and pwd else TvDatafeed()
+    tv = (
+        TvDatafeed(username=user, password=pwd)
+        if user and pwd
+        else TvDatafeed()
+    )
 
     symbols = {
         "gas": ("TFM1!", "ICEEUR"),  # TTF front month, EUR/MWh
@@ -906,7 +954,10 @@ def _fetch_market_commodities_from_tradingview() -> pd.DataFrame:
     rows = []
     for name, (symbol, exchange) in symbols.items():
         df = tv.get_hist(
-            symbol=symbol, exchange=exchange, interval=Interval.in_daily, n_bars=900
+            symbol=symbol,
+            exchange=exchange,
+            interval=Interval.in_daily,
+            n_bars=900,
         )
         if df is None or df.empty or "close" not in df.columns:
             continue
@@ -928,7 +979,10 @@ def commodities_tab():
     st.subheader("Commodity prices")
 
     lfs_candidate = None
-    for p in [MARKET_DIR / "commodities.parquet", MARKET_DIR / "commodities.csv"]:
+    for p in [
+        MARKET_DIR / "commodities.parquet",
+        MARKET_DIR / "commodities.csv",
+    ]:
         if isinstance(p, Path) and p.exists() and _is_git_lfs_pointer(p):
             lfs_candidate = p
             break
@@ -969,7 +1023,9 @@ def commodities_tab():
                         df = pd.DataFrame()
 
         with col_b:
-            if not df.empty and st.button("Save to `data/market/commodities.csv`"):
+            if not df.empty and st.button(
+                "Save to `data/market/commodities.csv`"
+            ):
                 out = df.copy()
                 out = out.reset_index().rename(columns={"index": "datetime"})
                 out_path = resolve_write_path(MARKET_DIR / "commodities.csv")
@@ -993,7 +1049,9 @@ def commodities_tab():
     min_date = df.index.min().date() if not df.empty else None
     max_date = df.index.max().date() if not df.empty else None
     default_end = max_date
-    default_start = max(min_date, max_date - timedelta(days=90)) if min_date else max_date
+    default_start = (
+        max(min_date, max_date - timedelta(days=90)) if min_date else max_date
+    )
 
     date_range = st.date_input(
         "Date range (inclusive)",
@@ -1024,7 +1082,10 @@ def commodities_tab():
         c for c in ["gas", "coal", "co2"] if c in numeric_cols
     ] or numeric_cols[: min(3, len(numeric_cols))]
     cols = st.multiselect(
-        "Series", options=numeric_cols, default=default_cols, key="commodities_series"
+        "Series",
+        options=numeric_cols,
+        default=default_cols,
+        key="commodities_series",
     )
     if not cols:
         st.info("Select at least one series.")
@@ -1050,7 +1111,9 @@ def commodities_tab():
     df_plot = _downsample_indexed(df, max_plot_points) if fast_plot else df
     x = _format_index_as_strings(df_plot.index)
     series = [(c, df_plot[c].tolist(), {"width": 1.2}) for c in cols]
-    chart = _pyecharts_timeseries_line(x=x, series=series, yaxis_title="", height_px=450)
+    chart = _pyecharts_timeseries_line(
+        x=x, series=series, yaxis_title="", height_px=450
+    )
     _render_chart(chart, 450)
 
 
@@ -1109,12 +1172,14 @@ def _attach_srmc(
     if co2_price_override is not None:
         co2_price = pd.Series(float(co2_price_override), index=df.index)
     else:
-        co2_price = pd.to_numeric(_col("co2_price_eur_per_t"), errors="coerce").fillna(
-            0.0
-        )
+        co2_price = pd.to_numeric(
+            _col("co2_price_eur_per_t"), errors="coerce"
+        ).fillna(0.0)
 
     srmc = (
-        fuel_price.div(eff.replace(0, pd.NA)).fillna(pd.NA) + co2_price * co2_int + vom
+        fuel_price.div(eff.replace(0, pd.NA)).fillna(pd.NA)
+        + co2_price * co2_int
+        + vom
     )
     df["srmc_eur_per_mwh"] = srmc
     return df
@@ -1123,14 +1188,19 @@ def _attach_srmc(
 def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
     filtered = df.copy()
     with st.expander("Filter table"):
-        name_filter = st.text_input("Name contains", "", key="plants_table_name_contains")
+        name_filter = st.text_input(
+            "Name contains", "", key="plants_table_name_contains"
+        )
         fuel_opts = (
             sorted(filtered["fuel"].dropna().unique().tolist())
             if "fuel" in filtered
             else []
         )
         fuel_sel = st.multiselect(
-            "Fuel", options=fuel_opts, default=fuel_opts, key="plants_table_fuel"
+            "Fuel",
+            options=fuel_opts,
+            default=fuel_opts,
+            key="plants_table_fuel",
         )
         stack_opts = (
             sorted(filtered["stack_type"].dropna().unique().tolist())
@@ -1156,7 +1226,10 @@ def _apply_table_filters(df: pd.DataFrame) -> pd.DataFrame:
             format_func=_fmt_stack_type,
         )
         cap_min, cap_max = (
-            (float(filtered["capacity_mw"].min()), float(filtered["capacity_mw"].max()))
+            (
+                float(filtered["capacity_mw"].min()),
+                float(filtered["capacity_mw"].max()),
+            )
             if not filtered.empty
             else (0.0, 0.0)
         )
@@ -1216,7 +1289,9 @@ def _list_areas_with_any_files(filenames: Tuple[str, ...]) -> List[str]:
     return io_list_areas_with_any_files(filenames)
 
 
-def _series_value_at_or_nearest(series: pd.Series, ts: pd.Timestamp) -> Tuple[pd.Timestamp, float]:
+def _series_value_at_or_nearest(
+    series: pd.Series, ts: pd.Timestamp
+) -> Tuple[pd.Timestamp, float]:
     if series.empty:
         raise ValueError("Series is empty")
     series = series.sort_index()
@@ -1230,7 +1305,9 @@ def _series_value_at_or_nearest(series: pd.Series, ts: pd.Timestamp) -> Tuple[pd
     return actual_ts, value
 
 
-def _series_value_at_or_before(series: pd.Series, ts: pd.Timestamp) -> Tuple[pd.Timestamp, float]:
+def _series_value_at_or_before(
+    series: pd.Series, ts: pd.Timestamp
+) -> Tuple[pd.Timestamp, float]:
     if series.empty:
         raise ValueError("Series is empty")
     series = series.sort_index()
@@ -1269,14 +1346,22 @@ def merit_order_rank_tab():
         )
     )
 
-    zone_options = sorted(all_plants["bidding_zone"].dropna().unique().tolist())
+    zone_options = sorted(
+        all_plants["bidding_zone"].dropna().unique().tolist()
+    )
     default_zone = (
-        "DE_LU" if "DE_LU" in zone_options else (zone_options[0] if zone_options else None)
+        "DE_LU"
+        if "DE_LU" in zone_options
+        else (zone_options[0] if zone_options else None)
     )
     zone = st.selectbox(
         "Bidding zone",
         options=zone_options,
-        index=zone_options.index(default_zone) if default_zone in zone_options else 0,
+        index=(
+            zone_options.index(default_zone)
+            if default_zone in zone_options
+            else 0
+        ),
         key="merit_zone",
     )
 
@@ -1290,7 +1375,9 @@ def merit_order_rank_tab():
             step=1,
             key="merit_min_unit_size_mw",
         )
-        include_chp = st.checkbox("Include CHP", value=True, key="merit_include_chp")
+        include_chp = st.checkbox(
+            "Include CHP", value=True, key="merit_include_chp"
+        )
     with col_cfg2:
         availability_multiplier = st.slider(
             "Availability multiplier",
@@ -1311,14 +1398,22 @@ def merit_order_rank_tab():
         )
 
     demand_series: Optional[pd.Series] = None
-    if demand_source == "From saved load series (if available)" and zone in demand_areas:
+    if (
+        demand_source == "From saved load series (if available)"
+        and zone in demand_areas
+    ):
         try:
             demand_series = _load_demand_series_cached(zone).dropna()
         except FileNotFoundError:
             demand_series = None
 
-    if demand_source == "From saved load series (if available)" and demand_series is None:
-        st.warning(f"No saved load series found for `{zone}`; switch to manual demand.")
+    if (
+        demand_source == "From saved load series (if available)"
+        and demand_series is None
+    ):
+        st.warning(
+            f"No saved load series found for `{zone}`; switch to manual demand."
+        )
         demand_source = "Manual input"
 
     col_time1, col_time2 = st.columns(2)
@@ -1335,7 +1430,9 @@ def merit_order_rank_tab():
                 key="merit_delivery_date",
             )
         else:
-            delivery_date = st.date_input("Delivery date (UTC)", key="merit_delivery_date")
+            delivery_date = st.date_input(
+                "Delivery date (UTC)", key="merit_delivery_date"
+            )
     with col_time2:
         period = st.selectbox(
             "Bidding period (UTC hour)",
@@ -1345,7 +1442,9 @@ def merit_order_rank_tab():
             format_func=lambda p: f"{p:02d} ({p-1:02d}:00–{p:02d}:00)",
         )
 
-    ts_delivery = pd.Timestamp(delivery_date) + pd.Timedelta(hours=int(period) - 1)
+    ts_delivery = pd.Timestamp(delivery_date) + pd.Timedelta(
+        hours=int(period) - 1
+    )
     st.caption(f"Selected delivery hour: `{ts_delivery}` (UTC)")
 
     df_zone_base = _filter_plants(
@@ -1377,7 +1476,9 @@ def merit_order_rank_tab():
         * avail_factor
         * float(availability_multiplier)
     )
-    df_zone_base = df_zone_base[df_zone_base["available_mw"] > 0].reset_index(drop=True)
+    df_zone_base = df_zone_base[df_zone_base["available_mw"] > 0].reset_index(
+        drop=True
+    )
     if df_zone_base.empty:
         st.info("No available capacity after applying availability settings.")
         return
@@ -1404,15 +1505,27 @@ def merit_order_rank_tab():
                 )
                 co2_source = "Manual"
             else:
-                eua_series = pd.to_numeric(commodities["co2"], errors="coerce").dropna()
+                eua_series = pd.to_numeric(
+                    commodities["co2"], errors="coerce"
+                ).dropna()
                 if not eua_series.empty:
                     eua_series = eua_series.resample("1D").last().dropna()
-                asof_ts = pd.Timestamp(delivery_date) - pd.Timedelta(days=1) + pd.Timedelta(hours=12)
+                asof_ts = (
+                    pd.Timestamp(delivery_date)
+                    - pd.Timedelta(days=1)
+                    + pd.Timedelta(hours=12)
+                )
                 try:
-                    co2_ts_used, co2_price_ui = _series_value_at_or_before(eua_series, asof_ts)
-                    st.caption(f"As-of `{asof_ts}` → using `{co2_ts_used}`: {co2_price_ui:,.2f} EUR/t")
+                    co2_ts_used, co2_price_ui = _series_value_at_or_before(
+                        eua_series, asof_ts
+                    )
+                    st.caption(
+                        f"As-of `{asof_ts}` → using `{co2_ts_used}`: {co2_price_ui:,.2f} EUR/t"
+                    )
                 except Exception as e:  # noqa: BLE001
-                    st.warning(f"Could not resolve CO₂ price as-of `{asof_ts}` ({e}); using manual CO₂.")
+                    st.warning(
+                        f"Could not resolve CO₂ price as-of `{asof_ts}` ({e}); using manual CO₂."
+                    )
                     co2_source = "Manual"
         if co2_source == "Manual":
             co2_price_ui = st.number_input(
@@ -1427,8 +1540,13 @@ def merit_order_rank_tab():
     with demand_col:
         demand_mw: Optional[float]
         ts_used: Optional[pd.Timestamp]
-        if demand_source == "From saved load series (if available)" and demand_series is not None:
-            ts_used, demand_mw = _series_value_at_or_nearest(demand_series, ts_delivery)
+        if (
+            demand_source == "From saved load series (if available)"
+            and demand_series is not None
+        ):
+            ts_used, demand_mw = _series_value_at_or_nearest(
+                demand_series, ts_delivery
+            )
             st.caption(f"Using demand at `{ts_used}`: {demand_mw:,.0f} MW")
         else:
             ts_used = None
@@ -1436,18 +1554,24 @@ def merit_order_rank_tab():
                 "Demand for bidding period (MW)",
                 min_value=0.0,
                 max_value=max(total_capacity * 2.0, 1.0),
-                value=min(total_capacity * 0.6, max(total_capacity - 1.0, 0.0)),
+                value=min(
+                    total_capacity * 0.6, max(total_capacity - 1.0, 0.0)
+                ),
                 step=100.0,
                 key="merit_demand_mw_manual",
             )
 
     df_zone = _attach_srmc(df_zone_base, co2_price_override=co2_price_ui)
-    df_zone = df_zone.dropna(subset=["srmc_eur_per_mwh", "capacity_mw", "available_mw"])
+    df_zone = df_zone.dropna(
+        subset=["srmc_eur_per_mwh", "capacity_mw", "available_mw"]
+    )
     if df_zone.empty:
         st.info("No plants with SRMC available after filters.")
         return
 
-    df_zone = df_zone.sort_values(["srmc_eur_per_mwh", "available_mw"], ascending=[True, False]).reset_index(drop=True)
+    df_zone = df_zone.sort_values(
+        ["srmc_eur_per_mwh", "available_mw"], ascending=[True, False]
+    ).reset_index(drop=True)
     df_zone["cum_capacity_mw"] = df_zone["available_mw"].cumsum()
 
     if demand_mw is None:
@@ -1458,11 +1582,26 @@ def merit_order_rank_tab():
         st.info("Demand must be > 0 MW.")
         return
 
-    pos = int((df_zone["cum_capacity_mw"] >= demand_mw).idxmax()) if demand_mw <= total_capacity else None
+    pos = (
+        int((df_zone["cum_capacity_mw"] >= demand_mw).idxmax())
+        if demand_mw <= total_capacity
+        else None
+    )
     if pos is None:
-        st.error(f"Demand {demand_mw:,.0f} MW exceeds available stack {total_capacity:,.0f} MW.")
+        st.error(
+            f"Demand {demand_mw:,.0f} MW exceeds available stack {total_capacity:,.0f} MW."
+        )
         st.dataframe(
-            df_zone[["name", "stack_type", "fuel", "srmc_eur_per_mwh", "available_mw", "cum_capacity_mw"]].tail(25),
+            df_zone[
+                [
+                    "name",
+                    "stack_type",
+                    "fuel",
+                    "srmc_eur_per_mwh",
+                    "available_mw",
+                    "cum_capacity_mw",
+                ]
+            ].tail(25),
             use_container_width=True,
         )
         return
@@ -1486,7 +1625,9 @@ def merit_order_rank_tab():
 
     supply = Line(
         init_opts=opts.InitOpts(
-            height="450px", width="100%", animation_opts=opts.AnimationOpts(animation=False)
+            height="450px",
+            width="100%",
+            animation_opts=opts.AnimationOpts(animation=False),
         )
     )
     supply.add_xaxis(x_vals)
@@ -1504,14 +1645,18 @@ def merit_order_rank_tab():
                 opts.MarkLineItem(x=demand_mw, name="Demand"),
                 opts.MarkLineItem(y=clearing_price, name="Clearing SRMC"),
             ],
-            linestyle_opts=opts.LineStyleOpts(type_="dotted", color="#d62728", width=1.2),
+            linestyle_opts=opts.LineStyleOpts(
+                type_="dotted", color="#d62728", width=1.2
+            ),
         ),
     )
     supply.set_global_opts(
         tooltip_opts=opts.TooltipOpts(trigger="axis"),
         legend_opts=opts.LegendOpts(is_show=False),
         datazoom_opts=[opts.DataZoomOpts(type_="inside")],
-        xaxis_opts=opts.AxisOpts(type_="value", name="Cumulative available capacity (MW)"),
+        xaxis_opts=opts.AxisOpts(
+            type_="value", name="Cumulative available capacity (MW)"
+        ),
         yaxis_opts=opts.AxisOpts(type_="value", name="SRMC (EUR/MWh)"),
     )
     _render_chart(supply, 450)
@@ -1554,10 +1699,12 @@ def plants_tab():
     if all_plants.empty:
         st.error("No OPSD plants available. Check data/external cache.")
         return
-    zone_options = sorted(all_plants["bidding_zone"].dropna().unique().tolist())
-    default_zones = [z for z in ("DE_LU", "FR") if z in zone_options] or zone_options[
-        :1
-    ]
+    zone_options = sorted(
+        all_plants["bidding_zone"].dropna().unique().tolist()
+    )
+    default_zones = [
+        z for z in ("DE_LU", "FR") if z in zone_options
+    ] or zone_options[:1]
     zones = st.multiselect(
         "Bidding zones",
         options=zone_options,
@@ -1575,7 +1722,9 @@ def plants_tab():
         step=10,
         key="plants_min_capacity_mw",
     )
-    include_chp = st.checkbox("Include CHP", value=True, key="plants_include_chp")
+    include_chp = st.checkbox(
+        "Include CHP", value=True, key="plants_include_chp"
+    )
     df = _filter_plants(
         all_plants,
         min_capacity=min_cap,
@@ -1606,7 +1755,9 @@ def plants_tab():
     with col1:
         if "fuel" in df:
             fuel_summary = (
-                df.groupby("fuel")["capacity_mw"].sum().sort_values(ascending=False)
+                df.groupby("fuel")["capacity_mw"]
+                .sum()
+                .sort_values(ascending=False)
             )
             st.write("Capacity by fuel (MW):")
             st.dataframe(fuel_summary.round(1))
@@ -1621,7 +1772,9 @@ def plants_tab():
             st.dataframe(type_summary.round(1))
     st.write("Capacity by bidding zone (MW):")
     zone_summary = (
-        df.groupby("bidding_zone")["capacity_mw"].sum().sort_values(ascending=False)
+        df.groupby("bidding_zone")["capacity_mw"]
+        .sum()
+        .sort_values(ascending=False)
     )
     st.dataframe(zone_summary.round(1))
 
@@ -1636,11 +1789,15 @@ def plants_tab():
             lat = getattr(row, "lat", None)
             if lon is None or lat is None or pd.isna(lon) or pd.isna(lat):
                 continue
-            points.append({"name": str(name)[:80], "value": [float(lon), float(lat)]})
+            points.append(
+                {"name": str(name)[:80], "value": [float(lon), float(lat)]}
+            )
 
         scatter = Scatter(
             init_opts=opts.InitOpts(
-                height="400px", width="100%", animation_opts=opts.AnimationOpts(animation=False)
+                height="400px",
+                width="100%",
+                animation_opts=opts.AnimationOpts(animation=False),
             )
         )
         scatter.add_xaxis([])
@@ -1732,8 +1889,12 @@ def plant_status_tab():
         st.error("No OPSD plants available. Check data/external cache.")
         return
 
-    zone_options = sorted(all_plants["bidding_zone"].dropna().unique().tolist())
-    default_zones = [z for z in ("DE_LU", "FR") if z in zone_options] or zone_options[:1]
+    zone_options = sorted(
+        all_plants["bidding_zone"].dropna().unique().tolist()
+    )
+    default_zones = [
+        z for z in ("DE_LU", "FR") if z in zone_options
+    ] or zone_options[:1]
     zones = st.multiselect(
         "Bidding zones",
         options=zone_options,
@@ -1777,7 +1938,9 @@ def plant_status_tab():
             step=5.0,
             key="status_co2_price_eur_per_t",
         )
-        name_filter = st.text_input("Name contains", "", key="status_name_contains")
+        name_filter = st.text_input(
+            "Name contains", "", key="status_name_contains"
+        )
 
     df = _filter_plants(
         all_plants,
@@ -1798,7 +1961,11 @@ def plant_status_tab():
             return
 
     if name_filter:
-        df = df[df["name"].astype(str).str.contains(name_filter, case=False, na=False)]
+        df = df[
+            df["name"]
+            .astype(str)
+            .str.contains(name_filter, case=False, na=False)
+        ]
         if df.empty:
             st.info("No plants match the name filter.")
             return
@@ -1806,19 +1973,27 @@ def plant_status_tab():
     df = _attach_srmc(df, co2_price_override=co2_price_ui)
 
     if "availability_factor" in df.columns:
-        avail_factor = pd.to_numeric(df["availability_factor"], errors="coerce").fillna(
-            1.0
-        )
+        avail_factor = pd.to_numeric(
+            df["availability_factor"], errors="coerce"
+        ).fillna(1.0)
     else:
         avail_factor = pd.Series(1.0, index=df.index)
-    df["available_mw"] = df["capacity_mw"] * avail_factor * float(
-        availability_multiplier
+    df["available_mw"] = (
+        df["capacity_mw"] * avail_factor * float(availability_multiplier)
     )
 
     current_year = pd.Timestamp.utcnow().year
-    commissioned = pd.to_numeric(df.get("commissioned_year", pd.NA), errors="coerce")
-    comment = df.get("comment", pd.Series("", index=df.index)).fillna("").astype(str)
-    tech = df.get("technology", pd.Series("", index=df.index)).fillna("").astype(str)
+    commissioned = pd.to_numeric(
+        df.get("commissioned_year", pd.NA), errors="coerce"
+    )
+    comment = (
+        df.get("comment", pd.Series("", index=df.index)).fillna("").astype(str)
+    )
+    tech = (
+        df.get("technology", pd.Series("", index=df.index))
+        .fillna("")
+        .astype(str)
+    )
     name = df.get("name", pd.Series("", index=df.index)).fillna("").astype(str)
     status_text = (comment + " " + tech + " " + name).str.lower()
 
@@ -1832,31 +2007,46 @@ def plant_status_tab():
         commissioned.notna() & (commissioned > current_year)
     ) | status_text.str.contains(planned_kw, regex=True, na=False)
     operational_mask = (
-        (commissioned.notna() & (commissioned <= current_year)) | (commissioned.isna() & ~retired_mask & ~planned_mask)
-    )
+        commissioned.notna() & (commissioned <= current_year)
+    ) | (commissioned.isna() & ~retired_mask & ~planned_mask)
 
     df.loc[retired_mask, "plant_status"] = "retired"
 
     df.loc[planned_mask & ~retired_mask, "plant_status"] = "planned"
 
-    df.loc[operational_mask & ~retired_mask & ~planned_mask, "plant_status"] = "operational"
+    df.loc[
+        operational_mask & ~retired_mask & ~planned_mask, "plant_status"
+    ] = "operational"
 
     # Split commissioned year into historical vs expected (future) for display clarity.
-    df["expected_commissioned_year"] = commissioned.where(commissioned > current_year)
+    df["expected_commissioned_year"] = commissioned.where(
+        commissioned > current_year
+    )
     df["commissioned_year"] = commissioned.where(commissioned <= current_year)
     if "is_dispatchable" in df.columns:
-        df["dispatchability"] = df["is_dispatchable"].fillna(True).map(
-            {True: "dispatchable", False: "non-dispatchable"}
+        df["dispatchability"] = (
+            df["is_dispatchable"]
+            .fillna(True)
+            .map({True: "dispatchable", False: "non-dispatchable"})
         )
     else:
         df["dispatchability"] = "dispatchable"
 
-    ramp_up = pd.to_numeric(df.get("ramp_up_mw_per_min", pd.NA), errors="coerce")
-    pmax = pd.to_numeric(df.get("p_max_mw", df.get("capacity_mw", pd.NA)), errors="coerce")
+    ramp_up = pd.to_numeric(
+        df.get("ramp_up_mw_per_min", pd.NA), errors="coerce"
+    )
+    pmax = pd.to_numeric(
+        df.get("p_max_mw", df.get("capacity_mw", pd.NA)), errors="coerce"
+    )
     df["ramp_up_pct_per_min"] = (ramp_up / pmax.replace(0, pd.NA)) * 100.0
 
     df = df.sort_values(
-        ["bidding_zone", "plant_status", "dispatchability", "srmc_eur_per_mwh"],
+        [
+            "bidding_zone",
+            "plant_status",
+            "dispatchability",
+            "srmc_eur_per_mwh",
+        ],
         ascending=[True, True, True, True],
     ).reset_index(drop=True)
 

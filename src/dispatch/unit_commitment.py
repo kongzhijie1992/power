@@ -36,11 +36,18 @@ def solve_uc(
         name = u["name"]
         for t in idx:
             p[(name, t)] = pulp.LpVariable(
-                f"p_{name}_{t}", lowBound=0, upBound=u["p_max"], cat="Continuous"
+                f"p_{name}_{t}",
+                lowBound=0,
+                upBound=u["p_max"],
+                cat="Continuous",
             )
             on[(name, t)] = pulp.LpVariable(f"on_{name}_{t}", cat="Binary")
-            startup[(name, t)] = pulp.LpVariable(f"start_{name}_{t}", cat="Binary")
-            shutdown[(name, t)] = pulp.LpVariable(f"shutdown_{name}_{t}", cat="Binary")
+            startup[(name, t)] = pulp.LpVariable(
+                f"start_{name}_{t}", cat="Binary"
+            )
+            shutdown[(name, t)] = pulp.LpVariable(
+                f"shutdown_{name}_{t}", cat="Binary"
+            )
 
     # objective: fuel cost + startup costs
     obj_terms = []
@@ -56,7 +63,9 @@ def solve_uc(
 
     # demand balance per hour
     for t in idx:
-        prob += pulp.lpSum([p[(u["name"], t)] for u in units]) == float(demand.loc[t])
+        prob += pulp.lpSum([p[(u["name"], t)] for u in units]) == float(
+            demand.loc[t]
+        )
 
     # production bounds linked to on
     for u in units:
@@ -73,7 +82,10 @@ def solve_uc(
         for i, t in enumerate(idx):
             if i == 0:
                 # assume off before horizon
-                prob += on[(name, t)] - 0 == startup[(name, t)] - shutdown[(name, t)]
+                prob += (
+                    on[(name, t)] - 0
+                    == startup[(name, t)] - shutdown[(name, t)]
+                )
             else:
                 t_prev = idx[i - 1]
                 prob += (
@@ -98,7 +110,9 @@ def solve_uc(
             for i, t in enumerate(idx):
                 end_i = min(i + min_down, len(idx))
                 prob += (
-                    pulp.lpSum([1 - on[(name, idx[j])] for j in range(i, end_i)])
+                    pulp.lpSum(
+                        [1 - on[(name, idx[j])] for j in range(i, end_i)]
+                    )
                     >= min_down * shutdown[(name, t)]
                 )
 

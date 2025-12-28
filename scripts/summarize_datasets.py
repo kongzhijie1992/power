@@ -8,6 +8,7 @@ Usage:
 import pandas as pd
 
 from src.data.io import DATA_DIR, path_exists, read_frame
+
 AREAS = [
     "DE_LU",
     "FR",

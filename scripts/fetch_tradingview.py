@@ -80,7 +80,10 @@ def main():
 
     df = pd.concat(rows, axis=1).sort_index().ffill()
     out = (
-        df.resample("1H").ffill().reset_index().rename(columns={"datetime": "datetime"})
+        df.resample("1H")
+        .ffill()
+        .reset_index()
+        .rename(columns={"datetime": "datetime"})
     )
     out_path = resolve_write_path(OUT_PATH)
     write_frame(out, out_path, index=False)

@@ -15,7 +15,9 @@ def test_walk_forward_predict_no_leakage_and_alignment():
         out_idx = pd.date_range(start, periods=24 * days, freq="h")
         return pd.Series(last_val, index=out_idx)
 
-    df = walk_forward_predict_series(series, fc, train_window_days=1, horizon_days=1)
+    df = walk_forward_predict_series(
+        series, fc, train_window_days=1, horizon_days=1
+    )
     # We should have predictions for every point after the first training window
     assert not df.empty
     assert df.index.min() > series.index.min()

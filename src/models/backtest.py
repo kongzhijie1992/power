@@ -7,7 +7,10 @@ from sklearn.metrics import mean_squared_error
 
 def _tz_naive(series: pd.Series) -> pd.Series:
     """Ensure DatetimeIndex is tz-naive (convert to UTC first if needed)."""
-    if isinstance(series.index, pd.DatetimeIndex) and series.index.tz is not None:
+    if (
+        isinstance(series.index, pd.DatetimeIndex)
+        and series.index.tz is not None
+    ):
         series = series.copy()
         series.index = series.index.tz_convert("UTC").tz_localize(None)
     return series
@@ -24,7 +27,10 @@ def simple_rmse(true: pd.Series, pred: pd.Series) -> float:
 
 
 def walk_forward_backtest(
-    series: pd.Series, forecast_func, train_window_days: int = 60, horizon_days: int = 7
+    series: pd.Series,
+    forecast_func,
+    train_window_days: int = 60,
+    horizon_days: int = 7,
 ):
     results = []
     freq = "D"
@@ -79,7 +85,9 @@ def walk_forward_predict_series(
     for ref in series.index[::step]:
         train_end = ref - pd.Timedelta(hours=1)
         train_start = train_end - window
-        train = series[(series.index > train_start) & (series.index <= train_end)]
+        train = series[
+            (series.index > train_start) & (series.index <= train_end)
+        ]
         if len(train) < 24:
             continue
         fc = forecast_func(train, days=horizon_days)

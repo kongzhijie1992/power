@@ -134,7 +134,9 @@ def build_blocks(
     eua = pd.to_numeric(sys.get(eua_col, 0.0), errors="coerce").fillna(0.0)
 
     if availability is None:
-        availability = pd.DataFrame(1.0, index=idx, columns=[u.unit_id for u in units])
+        availability = pd.DataFrame(
+            1.0, index=idx, columns=[u.unit_id for u in units]
+        )
     else:
         availability = availability.reindex(
             index=idx, columns=[u.unit_id for u in units]
@@ -143,7 +145,9 @@ def build_blocks(
     all_blocks: List[Block] = []
     for t in idx:
         for unit in units:
-            fuel_col = unit.fuel_price_col or fuel_price_cols.get(unit.fuel_type)
+            fuel_col = unit.fuel_price_col or fuel_price_cols.get(
+                unit.fuel_type
+            )
             fuel_price = 0.0
             if fuel_col and fuel_col in sys.columns:
                 fuel_price = float(

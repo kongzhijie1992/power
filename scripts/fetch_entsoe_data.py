@@ -74,14 +74,18 @@ def _read_indexed_csv_utc(path: Path | str) -> pd.DataFrame:
     return read_csv_indexed(path)
 
 
-def _merge_timeseries(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+def _merge_timeseries(
+    existing: pd.DataFrame, new: pd.DataFrame
+) -> pd.DataFrame:
     """Concat, sort, drop duplicate timestamps (keep newest/new)."""
     combined = pd.concat([existing, new], axis=0)
     combined = combined[~combined.index.duplicated(keep="last")].sort_index()
     return combined
 
 
-def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path=None):
+def fetch_entsoe_prices(
+    api_token, area_code, start_date, end_date, out_csv_path=None
+):
     """Fetch day-ahead prices from ENTSO-E API and return a DataFrame."""
     # ENTSO-E area code mappings (EIC codes)
     area_map = {
@@ -123,7 +127,9 @@ def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path
         "EE": "10Y1001A1001A39I",  # Estonia
     }
 
-    eic_code = area_map.get(area_code, area_code)  # use provided code as fallback
+    eic_code = area_map.get(
+        area_code, area_code
+    )  # use provided code as fallback
 
     # ENTSO-E API endpoint for day-ahead market prices
     url = "https://web-api.tp.entsoe.eu/api"
@@ -171,7 +177,9 @@ def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path
 
         # Namespace-agnostic search helpers
         def _iter_by_suffix(tag_suffix):
-            return [elem for elem in root.iter() if elem.tag.endswith(tag_suffix)]
+            return [
+                elem for elem in root.iter() if elem.tag.endswith(tag_suffix)
+            ]
 
         timeseries = _iter_by_suffix("TimeSeries")
 
@@ -183,10 +191,14 @@ def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path
 
             if period is not None:
                 time_interval_candidates = [
-                    elem for elem in period.iter() if elem.tag.endswith("timeInterval")
+                    elem
+                    for elem in period.iter()
+                    if elem.tag.endswith("timeInterval")
                 ]
                 time_interval = (
-                    time_interval_candidates[0] if time_interval_candidates else None
+                    time_interval_candidates[0]
+                    if time_interval_candidates
+                    else None
                 )
 
                 start_elem = None
@@ -200,7 +212,9 @@ def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path
                     start_time = pd.to_datetime(start_elem.text, utc=True)
 
                     points = [
-                        elem for elem in period.iter() if elem.tag.endswith("Point")
+                        elem
+                        for elem in period.iter()
+                        if elem.tag.endswith("Point")
                     ]
 
                     for i, point in enumerate(points):
@@ -224,13 +238,17 @@ def fetch_entsoe_prices(api_token, area_code, start_date, end_date, out_csv_path
             )
 
         # Create DataFrame
-        df = pd.DataFrame({"value": prices}, index=pd.to_datetime(timestamps, utc=True))
+        df = pd.DataFrame(
+            {"value": prices}, index=pd.to_datetime(timestamps, utc=True)
+        )
         df.index.name = "datetime"
 
         if out_csv_path:
             out_path = resolve_write_path(out_csv_path)
             write_frame(df, out_path)
-            print(f"Saved {len(df)} hours of real ENTSO-E prices to {out_path}")
+            print(
+                f"Saved {len(df)} hours of real ENTSO-E prices to {out_path}"
+            )
 
         return df
 
@@ -295,16 +313,26 @@ def download_open_meteo(
 def main():
     p = argparse.ArgumentParser()
     p.add_argument(
-        "--area", default="DE_LU", help="ENTSO-E area code (e.g., DE_LU, FR, IT, ES)"
+        "--area",
+        default="DE_LU",
+        help="ENTSO-E area code (e.g., DE_LU, FR, IT, ES)",
     )
     p.add_argument(
-        "--areas", nargs="+", help="List of ENTSO-E area codes (overrides --area)"
+        "--areas",
+        nargs="+",
+        help="List of ENTSO-E area codes (overrides --area)",
     )
     p.add_argument(
-        "--lat", type=float, default=52.52, help="Latitude for weather data (Germany)"
+        "--lat",
+        type=float,
+        default=52.52,
+        help="Latitude for weather data (Germany)",
     )
     p.add_argument(
-        "--lon", type=float, default=13.405, help="Longitude for weather data (Germany)"
+        "--lon",
+        type=float,
+        default=13.405,
+        help="Longitude for weather data (Germany)",
     )
     p.add_argument(
         "--days",
@@ -313,7 +341,8 @@ def main():
         help="Number of days to fetch (historical, used if no explicit dates)",
     )
     p.add_argument(
-        "--start-date", help="Start date (YYYY-MM-DD). If set, overrides --days."
+        "--start-date",
+        help="Start date (YYYY-MM-DD). If set, overrides --days.",
     )
     p.add_argument(
         "--end-date", help="End date (YYYY-MM-DD). If set, overrides --days."
@@ -325,9 +354,13 @@ def main():
         help="Chunk size in days for API calls (prevents 400 errors on long ranges)",
     )
     p.add_argument(
-        "--output", help="Output CSV path for prices (single-area only)", default=None
+        "--output",
+        help="Output CSV path for prices (single-area only)",
+        default=None,
     )
-    p.add_argument("--no-weather", action="store_true", help="Skip weather download")
+    p.add_argument(
+        "--no-weather", action="store_true", help="Skip weather download"
+    )
     p.add_argument(
         "--skip-price",
         action="store_true",
@@ -379,7 +412,9 @@ def main():
 
     # Prices: fetch real ENTSO-E data (chunked)
     # Precompute chunks once
-    ranges = list(_chunk_date_ranges(start_date, end_date, max(args.chunk_days, 1)))
+    ranges = list(
+        _chunk_date_ranges(start_date, end_date, max(args.chunk_days, 1))
+    )
     print(f"\nPlanned API calls per area: {len(ranges)} chunk(s)")
 
     # Default lat/lon per area (fallback to provided lat/lon)
@@ -432,8 +467,12 @@ def main():
         if not args.skip_price:
             combined_frames = []
             for idx, (chunk_start, chunk_end) in enumerate(ranges, start=1):
-                print(f"\nChunk {idx}/{len(ranges)}: {chunk_start} → {chunk_end}")
-                df_chunk = fetch_entsoe_prices(api_token, area, chunk_start, chunk_end)
+                print(
+                    f"\nChunk {idx}/{len(ranges)}: {chunk_start} → {chunk_end}"
+                )
+                df_chunk = fetch_entsoe_prices(
+                    api_token, area, chunk_start, chunk_end
+                )
                 combined_frames.append(df_chunk)
 
             combined = pd.concat(combined_frames, axis=0).sort_index()
@@ -463,7 +502,9 @@ def main():
             print(f"   Rows: {len(to_write):,}")
             print(f"   Range: {to_write.index[0]} → {to_write.index[-1]}")
         else:
-            print("⏭️  Skipping price download for this area (skip-price/weather-only).")
+            print(
+                "⏭️  Skipping price download for this area (skip-price/weather-only)."
+            )
 
         # Weather: use Open-Meteo archive for the same period
         if not args.no_weather:
@@ -483,7 +524,9 @@ def main():
                 )
             except Exception as e:
                 print(f"Weather download failed: {e}")
-                print("You can still run the pipeline using synthetic weather proxies.")
+                print(
+                    "You can still run the pipeline using synthetic weather proxies."
+                )
 
     if args.threads <= 1 or len(areas) == 1:
         for area in areas:
@@ -491,8 +534,12 @@ def main():
     else:
         workers = max(1, int(args.threads))
         print(f"\nFetching {len(areas)} areas using {workers} thread(s).")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(_process_area, area): area for area in areas}
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=workers
+        ) as executor:
+            futures = {
+                executor.submit(_process_area, area): area for area in areas
+            }
             for fut in concurrent.futures.as_completed(futures):
                 area = futures[fut]
                 try:

@@ -18,10 +18,16 @@ class TimeSeriesContract:
 
 
 def _is_monotonic_utc(idx: pd.DatetimeIndex) -> bool:
-    return idx.tz is not None and idx.tz.zone == "UTC" and idx.is_monotonic_increasing
+    return (
+        idx.tz is not None
+        and idx.tz.zone == "UTC"
+        and idx.is_monotonic_increasing
+    )
 
 
-def validate_contract(df: pd.DataFrame, contract: TimeSeriesContract) -> pd.DataFrame:
+def validate_contract(
+    df: pd.DataFrame, contract: TimeSeriesContract
+) -> pd.DataFrame:
     """Validate that dataframe meets the expected time-series contract."""
     if not isinstance(df.index, pd.DatetimeIndex):
         raise ValueError(f"{contract.name}: index must be DatetimeIndex")
@@ -41,7 +47,9 @@ def validate_contract(df: pd.DataFrame, contract: TimeSeriesContract) -> pd.Data
             df.index.min(), df.index.max(), freq=contract.freq, tz="UTC"
         )
         if len(expected) != len(df.index) or not df.index.equals(expected):
-            raise ValueError(f"{contract.name}: index not regular at {contract.freq}")
+            raise ValueError(
+                f"{contract.name}: index not regular at {contract.freq}"
+            )
     return df.sort_index()
 
 

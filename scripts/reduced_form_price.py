@@ -42,7 +42,9 @@ try:
 except Exception:  # pragma: no cover
     LGBMRegressor = None
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s"
+)
 logger = logging.getLogger("reduced_form_price")
 
 
@@ -106,7 +108,10 @@ def _load_demand_forecast(area: str) -> pd.Series:
 
 def _to_hourly(series: pd.Series) -> pd.Series:
     series = series.sort_index()
-    if isinstance(series.index, pd.DatetimeIndex) and series.index.tz is not None:
+    if (
+        isinstance(series.index, pd.DatetimeIndex)
+        and series.index.tz is not None
+    ):
         series.index = series.index.tz_convert("UTC").tz_localize(None)
     return series.resample("h").mean()
 
@@ -146,7 +151,9 @@ def calibrate_stack(price: pd.Series, net_load: pd.Series) -> StackParams:
     df = pd.concat([price, net_load], axis=1, join="inner").dropna()
     df.columns = ["price", "net_load"]
     if len(df) < 48:
-        raise ValueError("Not enough overlap to calibrate stack (need >=48 hours)")
+        raise ValueError(
+            "Not enough overlap to calibrate stack (need >=48 hours)"
+        )
     x = df["net_load"].values
     y = df["price"].values
     slope = float(np.maximum(np.cov(x, y)[0, 1] / (np.var(x) + 1e-9), 0.01))
@@ -158,7 +165,9 @@ def calibrate_stack(price: pd.Series, net_load: pd.Series) -> StackParams:
 def scarcity_adder(net_load: pd.Series, params: StackParams) -> pd.Series:
     margin = net_load / params.capacity
     scarcity = np.clip(
-        (margin - params.scarcity_threshold) / (1 - params.scarcity_threshold), 0, None
+        (margin - params.scarcity_threshold) / (1 - params.scarcity_threshold),
+        0,
+        None,
     )
     return pd.Series(params.scarcity_scale * scarcity**2, index=net_load.index)
 
@@ -222,14 +231,18 @@ def fit_residual_model(
     ef_gas: float = 0.36,
     ef_coal: float = 0.90,
 ) -> Tuple[Optional[object], float]:
-    base = pd.concat([price, stack_price, net_load], axis=1, join="inner").dropna()
+    base = pd.concat(
+        [price, stack_price, net_load], axis=1, join="inner"
+    ).dropna()
     base.columns = ["price", "stack", "net_load"]
     residual = base["price"] - base["stack"]
     feat = build_features(
         base["net_load"],
         base["stack"],
         commodities=(
-            commodities.reindex(base.index).ffill() if commodities is not None else None
+            commodities.reindex(base.index).ffill()
+            if commodities is not None
+            else None
         ),
         eta_gas=eta_gas,
         eta_coal=eta_coal,
@@ -324,7 +337,9 @@ def forecast_area(
     # quick backtest metric on overlap
     aligned = pd.concat([price, stack_train], axis=1, join="inner").dropna()
     aligned.columns = ["price", "stack"]
-    backtest_rmse = float(np.sqrt(((aligned["price"] - aligned["stack"]) ** 2).mean()))
+    backtest_rmse = float(
+        np.sqrt(((aligned["price"] - aligned["stack"]) ** 2).mean())
+    )
     logger.info(
         "%s: saved forecast -> %s | ratio=%.3f slope=%.3f rmse(stack)=%.2f n_hist=%d n_fc=%d",
         area,
@@ -384,7 +399,8 @@ def backtest_area(
         )
 
         target_net = net[
-            (net.index > ref) & (net.index <= ref + pd.Timedelta(days=horizon_days))
+            (net.index > ref)
+            & (net.index <= ref + pd.Timedelta(days=horizon_days))
         ]
         if target_net.empty:
             continue
@@ -399,7 +415,9 @@ def backtest_area(
             ef_coal=ef_coal,
         )
         if model:
-            residual_pred = pd.Series(model.predict(feat_fc), index=feat_fc.index)
+            residual_pred = pd.Series(
+                model.predict(feat_fc), index=feat_fc.index
+            )
         else:
             residual_pred = pd.Series(0.0, index=feat_fc.index)
         preds = (stack_fc + residual_pred).rename("pred")
@@ -442,9 +460,13 @@ def main(
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument(
-        "--areas", nargs="+", help="Areas to forecast/backtest (default: autodetect)"
+        "--areas",
+        nargs="+",
+        help="Areas to forecast/backtest (default: autodetect)",
     )
-    ap.add_argument("--horizon", type=int, default=7, help="Forecast horizon in days")
+    ap.add_argument(
+        "--horizon", type=int, default=7, help="Forecast horizon in days"
+    )
     ap.add_argument(
         "--train-window",
         type=int,
@@ -463,16 +485,25 @@ if __name__ == "__main__":
         help="CSV/Parquet with datetime, gas, coal, co2 columns",
     )
     ap.add_argument(
-        "--eta-gas", type=float, default=0.55, help="Gas fleet efficiency (electric)"
+        "--eta-gas",
+        type=float,
+        default=0.55,
+        help="Gas fleet efficiency (electric)",
     )
     ap.add_argument(
-        "--eta-coal", type=float, default=0.38, help="Coal fleet efficiency (electric)"
+        "--eta-coal",
+        type=float,
+        default=0.38,
+        help="Coal fleet efficiency (electric)",
     )
     ap.add_argument(
         "--ef-gas", type=float, default=0.36, help="Gas CO2 intensity t/MWh_e"
     )
     ap.add_argument(
-        "--ef-coal", type=float, default=0.90, help="Coal CO2 intensity t/MWh_e"
+        "--ef-coal",
+        type=float,
+        default=0.90,
+        help="Coal CO2 intensity t/MWh_e",
     )
     ap.add_argument(
         "--backtest-only",

@@ -63,13 +63,18 @@ def save_combined(series: pd.Series, area: str):
         path = resolve_write_path(pq_real)
         write_frame(df, path)
     except Exception as e:
-        logger.warning("Parquet write failed for %s: %s; falling back to CSV", area, e)
+        logger.warning(
+            "Parquet write failed for %s: %s; falling back to CSV", area, e
+        )
         path = resolve_write_path(csv_real)
         write_frame(df, path, index_label="datetime")
 
 
 def incremental_update(
-    area: str, api_key: str = None, lookback_hours: int = 6, days_max: int = 365
+    area: str,
+    api_key: str = None,
+    lookback_hours: int = 6,
+    days_max: int = 365,
 ):
     """Fetch missing hours for `area` and append to existing data.
 
@@ -106,9 +111,15 @@ def incremental_update(
     else:
         # align tz
         existing.index = pd.to_datetime(existing.index)
-        combined = pd.concat([existing, fetched[~fetched.index.isin(existing.index)]])
-        combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+        combined = pd.concat(
+            [existing, fetched[~fetched.index.isin(existing.index)]]
+        )
+        combined = combined[
+            ~combined.index.duplicated(keep="last")
+        ].sort_index()
 
     save_combined(combined, area)
-    logger.info("Incremental update completed for %s: %d rows", area, len(combined))
+    logger.info(
+        "Incremental update completed for %s: %d rows", area, len(combined)
+    )
     return combined

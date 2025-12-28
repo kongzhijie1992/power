@@ -7,7 +7,13 @@ from typing import Iterable, List, Optional
 
 import pandas as pd
 
-from src.data.io import DATA_DIR, path_exists, read_frame, resolve_write_path, write_frame
+from src.data.io import (
+    DATA_DIR,
+    path_exists,
+    read_frame,
+    resolve_write_path,
+    write_frame,
+)
 
 OPSD_URL = "https://data.open-power-system-data.org/conventional_power_plants/latest/conventional_power_plants_EU.csv"
 RENEWABLE_URL = "https://data.open-power-system-data.org/renewable_power_plants/latest/renewable_power_plants_EU.csv"
@@ -296,7 +302,9 @@ def fetch_opsd_conventional(
 ) -> pd.DataFrame:
     """Download OPSD conventional power plants CSV (or load from cache)."""
     if cache_path is None:
-        cache_path = DATA_DIR / "external" / "opsd_conventional_power_plants.csv"
+        cache_path = (
+            DATA_DIR / "external" / "opsd_conventional_power_plants.csv"
+        )
     cache_out = resolve_write_path(cache_path)
     if path_exists(cache_out) and not force:
         return read_frame(cache_out)
@@ -309,7 +317,9 @@ def _categorize_renewable_row(row: pd.Series) -> Optional[str]:
     lvl2 = str(row.get("energy_source_level_2", "")).lower()
     tech = str(row.get("technology", "")).lower()
     lvl3 = str(row.get("energy_source_level_3", "")).lower()
-    capacity = pd.to_numeric(row.get("electrical_capacity", None), errors="coerce")
+    capacity = pd.to_numeric(
+        row.get("electrical_capacity", None), errors="coerce"
+    )
     if pd.isna(capacity):
         capacity = 0.0
     if lvl2 == "wind":
@@ -331,7 +341,9 @@ def fetch_opsd_renewable(
     We keep aggregated onshore/offshore wind and solar (utility/distributed) per country to avoid multi-million rows.
     """
     if cache_path is None:
-        cache_path = DATA_DIR / "external" / "opsd_renewable_power_plants_agg.csv"
+        cache_path = (
+            DATA_DIR / "external" / "opsd_renewable_power_plants_agg.csv"
+        )
     cache_out = resolve_write_path(cache_path)
     if path_exists(cache_out) and not force:
         return read_frame(cache_out)
@@ -374,7 +386,9 @@ def fetch_opsd_renewable(
     return grouped
 
 
-def _normalize_countries(countries: Iterable[str] | None) -> Optional[List[str]]:
+def _normalize_countries(
+    countries: Iterable[str] | None,
+) -> Optional[List[str]]:
     if countries is None:
         return None
     if isinstance(countries, str):
@@ -490,18 +504,24 @@ def _load_availability_overrides(
         overrides = overrides.copy()
 
     if "availability_factor" not in overrides.columns:
-        raise ValueError("availability overrides require 'availability_factor' column")
+        raise ValueError(
+            "availability overrides require 'availability_factor' column"
+        )
     if "eic_code" not in overrides.columns:
         if "unit_id" in overrides.columns:
             overrides = overrides.rename(columns={"unit_id": "eic_code"})
         else:
-            raise ValueError("availability overrides require 'eic_code' column")
+            raise ValueError(
+                "availability overrides require 'eic_code' column"
+            )
 
     overrides["eic_code"] = (
         overrides["eic_code"].astype(str).str.strip().replace({"": pd.NA})
     )
     overrides = overrides.dropna(subset=["eic_code"])
-    overrides = overrides.groupby("eic_code", as_index=False)["availability_factor"].mean()
+    overrides = overrides.groupby("eic_code", as_index=False)[
+        "availability_factor"
+    ].mean()
     return overrides
 
 
@@ -539,7 +559,9 @@ def optimize_availability_factors(
             if pd.isna(key):
                 continue
             key = str(key)
-            if key in availability_means.index and pd.notna(availability_means[key]):
+            if key in availability_means.index and pd.notna(
+                availability_means[key]
+            ):
                 factor = float(availability_means[key])
                 break
         derived.loc[idx] = factor
@@ -585,7 +607,9 @@ def enrich_thermal_plants(
         df = df[df["country"].isin(countries_list)]
 
     if "capacity_mw" not in df.columns:
-        cap_col = "capacity" if "capacity" in df.columns else "electrical_capacity"
+        cap_col = (
+            "capacity" if "capacity" in df.columns else "electrical_capacity"
+        )
         df["capacity_mw"] = pd.to_numeric(df[cap_col], errors="coerce")
     df = df[df["capacity_mw"] >= min_capacity_mw]
 
@@ -595,11 +619,15 @@ def enrich_thermal_plants(
     df = df.dropna(subset=["fuel"])
 
     df["stack_type"] = df.apply(_map_stack_type, axis=1)
-    df["efficiency"] = df["stack_type"].map(lambda t: _default_for(t, "efficiency"))
+    df["efficiency"] = df["stack_type"].map(
+        lambda t: _default_for(t, "efficiency")
+    )
     df["co2_intensity"] = df["stack_type"].map(
         lambda t: _default_for(t, "co2_intensity")
     )
-    df["vom"] = df["stack_type"].map(lambda t: _default_for(t, "vom")).fillna(2.0)
+    df["vom"] = (
+        df["stack_type"].map(lambda t: _default_for(t, "vom")).fillna(2.0)
+    )
 
     df["p_max_mw"] = df["capacity_mw"]
     df["p_min_mw"] = df["capacity_mw"] * df["stack_type"].map(
@@ -609,7 +637,9 @@ def enrich_thermal_plants(
         lambda t: _default_for(t, "ramp_ratio_per_min")
     )
     df["ramp_down_mw_per_min"] = df["ramp_up_mw_per_min"]
-    df["min_up_hours"] = df["stack_type"].map(lambda t: _default_for(t, "min_up_hours"))
+    df["min_up_hours"] = df["stack_type"].map(
+        lambda t: _default_for(t, "min_up_hours")
+    )
     df["min_down_hours"] = df["stack_type"].map(
         lambda t: _default_for(t, "min_down_hours")
     )
@@ -632,12 +662,18 @@ def enrich_thermal_plants(
         lambda eff: 1.0 / eff if pd.notna(eff) and eff > 0 else pd.NA
     )
     df["is_dispatchable"] = (
-        df["stack_type"].map(lambda t: _default_for(t, "dispatchable")).fillna(True)
+        df["stack_type"]
+        .map(lambda t: _default_for(t, "dispatchable"))
+        .fillna(True)
     )
 
     df["is_chp"] = df.get("chp", pd.NA)
     df["is_chp"] = (
-        df["is_chp"].fillna("").astype(str).str.lower().isin({"yes", "y", "true", "1"})
+        df["is_chp"]
+        .fillna("")
+        .astype(str)
+        .str.lower()
+        .isin({"yes", "y", "true", "1"})
     )
     df["commissioned_year"] = pd.to_numeric(
         df.get("commissioned", pd.NA), errors="coerce"
@@ -684,7 +720,9 @@ def enrich_thermal_plants(
 
     overrides = _load_availability_overrides(availability_overrides)
     if overrides is not None:
-        df = df.merge(overrides, on="eic_code", how="left", suffixes=("", "_override"))
+        df = df.merge(
+            overrides, on="eic_code", how="left", suffixes=("", "_override")
+        )
         df["availability_factor"] = df["availability_factor_override"].fillna(
             df["availability_factor"]
         )
@@ -731,8 +769,14 @@ class PlantStack:
             if row.get("is_dispatchable", True) is False:
                 continue
             plant_avail_raw = row.get("availability_factor", 1.0)
-            plant_avail = float(plant_avail_raw) if pd.notna(plant_avail_raw) else 1.0
-            eff = float(row["efficiency"]) if pd.notna(row["efficiency"]) else 1.0
+            plant_avail = (
+                float(plant_avail_raw) if pd.notna(plant_avail_raw) else 1.0
+            )
+            eff = (
+                float(row["efficiency"])
+                if pd.notna(row["efficiency"])
+                else 1.0
+            )
             blocks.append(
                 {
                     "name": row["name"],
