@@ -27,27 +27,44 @@ from typing import Optional, Tuple, Iterable, List
 import numpy as np
 import pandas as pd
 
+from src.data.io import (
+    DATA_DIR,
+    list_areas_with_file,
+    path_exists,
+    read_frame,
+    resolve_data_path,
+    resolve_write_path,
+    write_frame,
+)
+
 try:
     from lightgbm import LGBMRegressor
 except Exception:  # pragma: no cover
     LGBMRegressor = None
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
-
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger("reduced_form_price")
 
 
-def _read_csv_indexed(path: Path, value_col: Optional[str] = None) -> pd.Series:
-    df = pd.read_csv(path)
+def _load_frame(path: Path) -> pd.DataFrame:
+    try:
+        resolved = resolve_data_path(path)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(path) from exc
+    if not path_exists(resolved):
+        raise FileNotFoundError(path)
+    df = read_frame(resolved)
     if "datetime" in df.columns:
         df["datetime"] = pd.to_datetime(df["datetime"])
         df = df.set_index("datetime")
     df.index = pd.to_datetime(df.index)
+    return df
+
+
+def _read_series(path: Path, value_col: Optional[str] = None) -> pd.Series:
+    df = _load_frame(path)
     if value_col and value_col in df.columns:
         return df[value_col]
-    # pick the first numeric column
     num_cols = df.select_dtypes(include="number").columns
     if len(num_cols) == 0:
         raise ValueError(f"No numeric columns in {path}")
@@ -62,32 +79,23 @@ def _load_price(area: str) -> pd.Series:
         DATA_DIR / area / "day_ahead.csv",
     ]
     for path in candidates:
-        if not path.exists():
+        try:
+            df = _load_frame(path)
+        except FileNotFoundError:
             continue
-        if path.suffix == ".parquet":
-            df = pd.read_parquet(path)
-            series = df["value"]
-            series.index = pd.to_datetime(df.index if df.index.name else df["datetime"])
-        else:
-            series = _read_csv_indexed(path, value_col="value")
+        series = df["value"] if "value" in df.columns else df.iloc[:, 0]
         return series.sort_index()
     raise FileNotFoundError(f"No price file found for {area}")
 
 
 def _load_residual_demand(area: str) -> pd.Series:
     path = DATA_DIR / area / "residual_demand.csv"
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return _read_csv_indexed(path, value_col="residual_demand").sort_index()
+    return _read_series(path, value_col="residual_demand").sort_index()
 
 
 def _load_demand_forecast(area: str) -> pd.Series:
     path = DATA_DIR / area / "demand_forecast.csv"
-    if not path.exists():
-        raise FileNotFoundError(path)
-    df = pd.read_csv(path)
-    df["datetime"] = pd.to_datetime(df["datetime"])
-    df = df.set_index("datetime")
+    df = _load_frame(path)
     # prefer corrected_mean, fallback to tso_forecast
     for col in ("corrected_mean", "tso_forecast", "mean"):
         if col in df.columns:
@@ -103,14 +111,20 @@ def _to_hourly(series: pd.Series) -> pd.Series:
     return series.resample("h").mean()
 
 
-def load_commodities(path: Optional[Path]) -> Optional[pd.DataFrame]:
+def load_commodities(path: Optional[str]) -> Optional[pd.DataFrame]:
     """Load commodity price time series (e.g., gas, coal, co2) from CSV/Parquet."""
-    if path is None or not path.exists():
+    if path is None:
         return None
-    if path.suffix == ".parquet":
-        df = pd.read_parquet(path)
-    else:
-        df = pd.read_csv(path)
+    try:
+        if path.startswith("s3://"):
+            resolved = path
+        else:
+            resolved = resolve_data_path(Path(path))
+    except FileNotFoundError:
+        return None
+    if not path_exists(resolved):
+        return None
+    df = read_frame(resolved)
     if "datetime" in df.columns:
         df["datetime"] = pd.to_datetime(df["datetime"])
         df = df.set_index("datetime")
@@ -304,9 +318,8 @@ def forecast_area(
     q90 = q90_raw.clip(upper=cap_high) if cap_high else q90_raw
     out = pd.DataFrame({"mean": mean_price, "q10": q10, "q90": q90})
     out.index.name = "datetime"
-    out_path = DATA_DIR / area / "price_forecast.csv"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(out_path, index=True)
+    out_path = resolve_write_path(DATA_DIR / area / "price_forecast.csv")
+    write_frame(out, out_path, index_label="datetime")
 
     # quick backtest metric on overlap
     aligned = pd.concat([price, stack_train], axis=1, join="inner").dropna()
@@ -446,7 +459,7 @@ if __name__ == "__main__":
     )
     ap.add_argument(
         "--commodities-file",
-        type=Path,
+        type=str,
         help="CSV/Parquet with datetime, gas, coal, co2 columns",
     )
     ap.add_argument(
@@ -474,24 +487,18 @@ if __name__ == "__main__":
         areas = args.areas
     else:
         if args.backtest_only:
-            areas = [
-                p.name
-                for p in DATA_DIR.iterdir()
-                if p.is_dir()
-                and (p / "residual_demand.csv").exists()
-                and (
-                    (p / "day_ahead_real.parquet").exists()
-                    or (p / "day_ahead_real.csv").exists()
-                    or (p / "day_ahead.parquet").exists()
-                    or (p / "day_ahead.csv").exists()
-                )
-            ]
+            residual_areas = set(list_areas_with_file("residual_demand.csv"))
+            price_areas: set[str] = set()
+            for name in (
+                "day_ahead_real.parquet",
+                "day_ahead_real.csv",
+                "day_ahead.parquet",
+                "day_ahead.csv",
+            ):
+                price_areas.update(list_areas_with_file(name))
+            areas = sorted(residual_areas & price_areas)
         else:
-            areas = [
-                p.name
-                for p in DATA_DIR.iterdir()
-                if p.is_dir() and (p / "demand_forecast.csv").exists()
-            ]
+            areas = list_areas_with_file("demand_forecast.csv")
 
     if args.backtest_only:
         rows = []

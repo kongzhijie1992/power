@@ -30,7 +30,7 @@ python check_data.py
 ## GUI Fallback (if token unavailable)
 
 1️⃣ **Download** from https://www.entsoe.eu/data/energy-prices-data/  
-   - Area: Germany (DE)  
+   - Area: Germany/Luxembourg (DE_LU)  
    - Data type: Day-ahead prices  
    - Periods: 2024 full year → `GUI_2024.csv`, 2023 full year → `GUI_2023.csv`
 

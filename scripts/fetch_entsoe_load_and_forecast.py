@@ -20,6 +20,7 @@ import datetime as dt
 import os
 from pathlib import Path
 import re
+import concurrent.futures
 from typing import Iterable, Tuple
 import xml.etree.ElementTree as ET
 
@@ -37,6 +38,14 @@ except Exception:
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
                 os.environ[k.strip()] = v.strip()
+
+from src.data.io import (
+    DATA_DIR,
+    path_exists,
+    read_csv_indexed,
+    resolve_write_path,
+    write_frame,
+)
 
 
 AREA_MAP = {
@@ -212,8 +221,7 @@ def _extract_publication_times(xml_text: str) -> pd.Series:
 
 
 def _read_ts_csv(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path, parse_dates=["datetime"])
-    df = df.set_index("datetime")
+    df = read_csv_indexed(path)
     df.index = pd.to_datetime(df.index, errors="coerce")
     df = df[~df.index.isna()]
     return df
@@ -328,6 +336,107 @@ def fetch_load_forecast_publication_times(
     return pd.Series(dtype="datetime64[ns]")
 
 
+def _fetch_area_load_and_forecast(
+    area: str,
+    api_token: str,
+    ranges: list[Tuple[dt.date, dt.date]],
+    merge_existing: bool,
+    parquet: bool,
+) -> tuple[str, Path, Path]:
+    try:
+        from entsoe import EntsoePandasClient, EntsoeRawClient
+    except ImportError:
+        raise SystemExit(
+            "entsoe-py not installed. Install with `pip install entsoe-py`."
+        )
+
+    client = EntsoePandasClient(api_key=api_token)
+    raw_client = EntsoeRawClient(api_key=api_token)
+
+    actual_chunks = []
+    forecast_chunks = []
+    for idx, (cs, ce) in enumerate(ranges, start=1):
+        print(f"\n[{area}] Chunk {idx}/{len(ranges)}: {cs} → {ce}")
+        try:
+            act, fc = fetch_load_and_forecast(client, area, cs, ce)
+            actual_chunks.append(act)
+            forecast_chunk = fc.to_frame(name="tso_day_ahead_forecast")
+            try:
+                pub = fetch_load_forecast_publication_times(raw_client, area, cs, ce)
+                if pub is not None and not pub.empty:
+                    pub = pub.reindex(forecast_chunk.index)
+                    forecast_chunk["tso_publication_time_utc"] = pub
+            except Exception as e:
+                print(f"  publication timestamps not available: {e}")
+            forecast_chunks.append(forecast_chunk)
+            print(f"  got actual {len(act)} pts, forecast {len(fc)} pts")
+        except Exception as e:
+            print(f"  failed chunk {cs}->{ce} for {area}: {e}")
+            continue
+
+    if not actual_chunks or not forecast_chunks:
+        print(f"⚠️ No data for {area}, skipping")
+        return area, Path(), Path()
+
+    actual = pd.concat(actual_chunks).sort_index()
+    forecast = pd.concat(forecast_chunks).sort_index()
+    # drop duplicates
+    actual = actual[~actual.index.duplicated(keep="first")]
+    forecast = forecast[~forecast.index.duplicated(keep="first")]
+
+    # clamp to requested window (UTC naive)
+    start_ts = pd.Timestamp(ranges[0][0])
+    end_ts = pd.Timestamp(ranges[-1][1] + dt.timedelta(days=1)) - pd.Timedelta(
+        hours=1
+    )
+    actual = actual[(actual.index >= start_ts) & (actual.index <= end_ts)]
+    forecast = forecast[
+        (forecast.index >= start_ts) & (forecast.index <= end_ts + pd.Timedelta(days=1))
+    ]
+
+    area_dir = DATA_DIR / area
+
+    actual_df = actual.to_frame(name="actual_load")
+    forecast_df = forecast.copy()
+
+    actual_csv = resolve_write_path(area_dir / "load_actual.csv")
+    forecast_csv = resolve_write_path(area_dir / "load_forecast.csv")
+    to_write_actual = actual_df
+    to_write_forecast = forecast_df
+    if merge_existing:
+        if path_exists(actual_csv):
+            try:
+                old = _read_ts_csv(actual_csv)
+                to_write_actual = _merge_timeseries(old, actual_df)
+            except Exception as e:
+                print(
+                    f"⚠️  Failed to merge existing actual load for {area}: {e}; overwriting."
+                )
+        if path_exists(forecast_csv):
+            try:
+                old = _read_ts_csv(forecast_csv)
+                to_write_forecast = _merge_timeseries(old, forecast_df)
+            except Exception as e:
+                print(
+                    f"⚠️  Failed to merge existing forecast load for {area}: {e}; overwriting."
+                )
+
+    write_frame(to_write_actual, actual_csv, index_label="datetime")
+    write_frame(to_write_forecast, forecast_csv, index_label="datetime")
+    print(f"✅ Saved actual -> {actual_csv} ({len(to_write_actual):,} rows)")
+    print(f"✅ Saved forecast -> {forecast_csv} ({len(to_write_forecast):,} rows)")
+
+    if parquet:
+        write_frame(
+            to_write_actual, resolve_write_path(area_dir / "load_actual.parquet")
+        )
+        write_frame(
+            to_write_forecast, resolve_write_path(area_dir / "load_forecast.parquet")
+        )
+
+    return area, actual_csv, forecast_csv
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--area", default="DE_LU")
@@ -335,6 +444,10 @@ def main():
     p.add_argument("--start-date", default="2023-01-01")
     p.add_argument("--end-date", default=dt.date.today().isoformat())
     p.add_argument("--chunk-days", type=int, default=90)
+    p.add_argument("--workers", type=int, default=0, help="0 uses a small auto pool")
+    p.add_argument(
+        "--executor", choices=["thread", "process"], default="thread"
+    )
     p.add_argument("--parquet", action="store_true", help="Also write Parquet")
     p.add_argument(
         "--merge-existing",
@@ -346,13 +459,6 @@ def main():
     api_token = os.getenv("ENTSOE_API_TOKEN")
     if not api_token:
         raise SystemExit("ENTSOE_API_TOKEN not set (env or .env)")
-    try:
-        from entsoe import EntsoePandasClient, EntsoeRawClient
-    except ImportError:
-        raise SystemExit(
-            "entsoe-py not installed. Install with `pip install entsoe-py`."
-        )
-
     areas = args.areas if args.areas else [args.area]
     ranges = list(
         _chunk_ranges(
@@ -363,90 +469,38 @@ def main():
     )
     print(f"Planned calls per area: {len(ranges)} chunks (actual + forecast)")
 
-    client = EntsoePandasClient(api_key=api_token)
-    raw_client = EntsoeRawClient(api_key=api_token)
+    workers = args.workers or min(4, len(areas))
+    if workers <= 1 or len(areas) == 1:
+        for area in areas:
+            _fetch_area_load_and_forecast(
+                area, api_token, ranges, args.merge_existing, args.parquet
+            )
+        return
 
-    for area in areas:
-        actual_chunks = []
-        forecast_chunks = []
-        for idx, (cs, ce) in enumerate(ranges, start=1):
-            print(f"\n[{area}] Chunk {idx}/{len(ranges)}: {cs} → {ce}")
+    executor_cls = (
+        concurrent.futures.ThreadPoolExecutor
+        if args.executor == "thread"
+        else concurrent.futures.ProcessPoolExecutor
+    )
+    print(f"Fetching {len(areas)} areas using {workers} {args.executor}(s).")
+    with executor_cls(max_workers=workers) as executor:
+        futures = {
+            executor.submit(
+                _fetch_area_load_and_forecast,
+                area,
+                api_token,
+                ranges,
+                args.merge_existing,
+                args.parquet,
+            ): area
+            for area in areas
+        }
+        for fut in concurrent.futures.as_completed(futures):
+            area = futures[fut]
             try:
-                act, fc = fetch_load_and_forecast(client, area, cs, ce)
-                actual_chunks.append(act)
-                forecast_chunk = fc.to_frame(name="tso_day_ahead_forecast")
-                try:
-                    pub = fetch_load_forecast_publication_times(
-                        raw_client, area, cs, ce
-                    )
-                    if pub is not None and not pub.empty:
-                        pub = pub.reindex(forecast_chunk.index)
-                        forecast_chunk["tso_publication_time_utc"] = pub
-                except Exception as e:
-                    print(f"  publication timestamps not available: {e}")
-                forecast_chunks.append(forecast_chunk)
-                print(f"  got actual {len(act)} pts, forecast {len(fc)} pts")
-            except Exception as e:
-                print(f"  failed chunk {cs}->{ce} for {area}: {e}")
-                continue
-
-        if not actual_chunks or not forecast_chunks:
-            print(f"⚠️ No data for {area}, skipping")
-            continue
-
-        actual = pd.concat(actual_chunks).sort_index()
-        forecast = pd.concat(forecast_chunks).sort_index()
-        # drop duplicates
-        actual = actual[~actual.index.duplicated(keep="first")]
-        forecast = forecast[~forecast.index.duplicated(keep="first")]
-
-        # clamp to requested window (UTC naive)
-        start_ts = pd.Timestamp(_parse_date(args.start_date))
-        end_ts = pd.Timestamp(
-            _parse_date(args.end_date) + dt.timedelta(days=1)
-        ) - pd.Timedelta(hours=1)
-        actual = actual[(actual.index >= start_ts) & (actual.index <= end_ts)]
-        forecast = forecast[
-            (forecast.index >= start_ts)
-            & (forecast.index <= end_ts + pd.Timedelta(days=1))
-        ]
-
-        area_dir = Path("data") / area
-        area_dir.mkdir(parents=True, exist_ok=True)
-
-        actual_df = actual.to_frame(name="actual_load")
-        forecast_df = forecast.copy()
-
-        actual_csv = area_dir / "load_actual.csv"
-        forecast_csv = area_dir / "load_forecast.csv"
-        to_write_actual = actual_df
-        to_write_forecast = forecast_df
-        if args.merge_existing:
-            if actual_csv.exists():
-                try:
-                    old = _read_ts_csv(actual_csv)
-                    to_write_actual = _merge_timeseries(old, actual_df)
-                except Exception as e:
-                    print(
-                        f"⚠️  Failed to merge existing actual load for {area}: {e}; overwriting."
-                    )
-            if forecast_csv.exists():
-                try:
-                    old = _read_ts_csv(forecast_csv)
-                    to_write_forecast = _merge_timeseries(old, forecast_df)
-                except Exception as e:
-                    print(
-                        f"⚠️  Failed to merge existing forecast load for {area}: {e}; overwriting."
-                    )
-
-        to_write_actual.to_csv(actual_csv, index_label="datetime")
-        to_write_forecast.to_csv(forecast_csv, index_label="datetime")
-        print(f"✅ Saved actual -> {actual_csv} ({len(to_write_actual):,} rows)")
-        print(f"✅ Saved forecast -> {forecast_csv} ({len(to_write_forecast):,} rows)")
-
-        if args.parquet:
-            to_write_actual.to_parquet(area_dir / "load_actual.parquet")
-            to_write_forecast.to_parquet(area_dir / "load_forecast.parquet")
+                fut.result()
+            except Exception as exc:
+                print(f"⚠️  Area {area} failed: {exc}")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ Notes:
 import logging
 from pathlib import Path
 import datetime as dt
+import os
+import tempfile
 import requests
 import xarray as xr
 
@@ -47,14 +49,9 @@ def download_gfs_analysis(
     """
     run_dt = run_dt or dt.datetime.utcnow()
     if dest_dir is None:
-        dest_dir = (
-            Path(__file__).parents[2]
-            / "data"
-            / "weather"
-            / "gfs"
-            / run_dt.strftime("%Y%m%d")
-            / f"{run_dt.hour:02d}"
-        )
+        base = os.getenv("GFS_CACHE_DIR")
+        root = Path(base) if base else Path(tempfile.gettempdir()) / "power_gfs"
+        dest_dir = root / run_dt.strftime("%Y%m%d") / f"{run_dt.hour:02d}"
     dest_dir = Path(dest_dir).resolve()
     dest_dir.mkdir(parents=True, exist_ok=True)
 

@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 import sys
 
+from src.data.io import resolve_write_path, write_frame
 
 def download_instructions():
     """Print instructions for downloading from ENTSO-E GUI."""
@@ -27,7 +28,7 @@ def download_instructions():
 STEP 1: Download 2024 (Jan-Dec)
   1. Go to https://www.entsoe.eu/data/energy-prices-data/
   2. Select:
-     - Area: Germany (DE)
+     - Area: Germany/Luxembourg (DE_LU)
      - Data type: Day-ahead prices
      - Period: 01/01/2024 00:00 to 31/12/2024 23:45
   3. Click "Download as CSV"
@@ -47,7 +48,7 @@ STEP 4: Run this script
   python scripts/merge_years.py \\
     --input1 "GUI_2024.csv" \\
     --input2 "GUI_2023.csv" \\
-    --output data/DE/day_ahead.csv \\
+    --output data/DE_LU/day_ahead.csv \\
     --sequence 1
 
 Expected Result:
@@ -139,10 +140,12 @@ def merge_csv_files(input_files, output_file, sequence=1):
         combined = combined.tz_convert("UTC")
 
     # Write output
-    output_file = Path(output_file)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    combined.rename("value").to_frame().to_csv(output_file, index_label="datetime")
+    output_file = resolve_write_path(Path(output_file))
+    write_frame(
+        combined.rename("value").to_frame(),
+        output_file,
+        index_label="datetime",
+    )
 
     print(f"\n✅ Merged file written: {output_file}")
     print(f"   Rows: {len(combined):,}")
@@ -161,7 +164,7 @@ def main():
 Examples:
   # Merge two yearly CSV files
   python scripts/merge_years.py --input1 GUI_2024.csv --input2 GUI_2023.csv \\
-    --output data/DE/day_ahead.csv
+    --output data/DE_LU/day_ahead.csv
 
   # Show download instructions
   python scripts/merge_years.py --instructions
@@ -169,7 +172,7 @@ Examples:
   # Merge three files
   python scripts/merge_years.py \\
     --input1 GUI_2025.csv --input2 GUI_2024.csv --input3 GUI_2023.csv \\
-    --output data/DE/day_ahead.csv
+    --output data/DE_LU/day_ahead.csv
         """,
     )
 

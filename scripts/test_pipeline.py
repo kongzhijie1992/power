@@ -16,6 +16,8 @@ import json
 
 import pandas as pd
 
+from src.data.io import path_exists, read_frame, resolve_data_path
+
 # Load token from .env
 env_path = Path(__file__).parents[1] / ".env"
 token = None
@@ -60,14 +62,33 @@ else:
 # Test 3: Converter functionality
 print("\n[TEST 3] Data Converter (GUI CSV → Hourly)")
 converter_script = Path(__file__).parents[1] / "scripts" / "convert_entsoe.py"
-seq1_csv = Path(__file__).parents[1] / "data" / "DE" / "day_ahead_seq1.csv"
-seq2_csv = Path(__file__).parents[1] / "data" / "DE" / "day_ahead_seq2.csv"
+seq1_csv = Path(__file__).parents[1] / "data" / "DE_LU" / "day_ahead_seq1.csv"
+seq2_csv = Path(__file__).parents[1] / "data" / "DE_LU" / "day_ahead_seq2.csv"
 
-if seq1_csv.exists() and seq2_csv.exists():
+def load_series(path: Path) -> pd.Series:
+    resolved = resolve_data_path(path)
+    if not path_exists(resolved):
+        raise FileNotFoundError(resolved)
+    df = read_frame(resolved)
+    if "datetime" in df.columns:
+        df["datetime"] = pd.to_datetime(df["datetime"])
+        df = df.set_index("datetime")
+    df.index = pd.to_datetime(df.index)
+    return df["value"] if "value" in df.columns else df.iloc[:, 0]
+
+
+try:
+    seq1_resolved = resolve_data_path(seq1_csv)
+    seq2_resolved = resolve_data_path(seq2_csv)
+except FileNotFoundError:
+    seq1_resolved = seq1_csv
+    seq2_resolved = seq2_csv
+
+if path_exists(seq1_resolved) and path_exists(seq2_resolved):
     # Load and validate
     try:
-        s1 = pd.read_csv(seq1_csv, index_col=0, parse_dates=True)
-        s2 = pd.read_csv(seq2_csv, index_col=0, parse_dates=True)
+        s1 = load_series(seq1_csv).to_frame("value")
+        s2 = load_series(seq2_csv).to_frame("value")
 
         print(f"✓ Seq1 loaded: {len(s1)} rows")
         print(f"  - Datetime range: {s1.index.min()} to {s1.index.max()}")
@@ -104,8 +125,8 @@ else:
 # Test 4: Price statistics
 print("\n[TEST 4] Price Statistics Comparison")
 try:
-    s1 = pd.read_csv(seq1_csv, index_col=0, parse_dates=True)["value"]
-    s2 = pd.read_csv(seq2_csv, index_col=0, parse_dates=True)["value"]
+    s1 = load_series(seq1_csv)
+    s2 = load_series(seq2_csv)
 
     # Align indices
     s1, s2 = s1.align(s2, join="inner")
@@ -129,7 +150,7 @@ except Exception as e:
 # Test 5: Plotting functionality
 print("\n[TEST 5] Data Visualization")
 plot_script = Path(__file__).parents[1] / "scripts" / "plot_sequences.py"
-plot_output = Path(__file__).parents[1] / "data" / "DE" / "seq_compare.png"
+plot_output = Path(__file__).parents[1] / "plots" / "DE_LU" / "seq_compare.png"
 
 if plot_output.exists():
     size_kb = plot_output.stat().st_size / 1024

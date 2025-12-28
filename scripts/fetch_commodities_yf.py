@@ -20,8 +20,9 @@ import yfinance as yf
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(message)s")
 log = logging.getLogger("fetch_commodities_yf")
 
-OUT_PATH = Path("data/market/commodities.csv")
-OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+from src.data.io import DATA_DIR, resolve_write_path, write_frame
+
+OUT_PATH = DATA_DIR / "market" / "commodities.csv"
 
 
 def download(ticker: str) -> pd.Series:
@@ -58,9 +59,9 @@ def main():
         .reset_index()
     )
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(OUT_PATH, index=False)
-    log.info("Saved commodities -> %s (rows=%d)", OUT_PATH, len(out))
+    out_path = resolve_write_path(OUT_PATH)
+    write_frame(out, out_path, index=False)
+    log.info("Saved commodities -> %s (rows=%d)", out_path, len(out))
 
 
 if __name__ == "__main__":

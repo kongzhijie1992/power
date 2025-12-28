@@ -4,6 +4,7 @@ import json
 import math
 import os
 import subprocess
+import importlib
 from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Tuple, List
@@ -20,18 +21,45 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data.io import (
-    load_demand_series,
-    load_tso_forecast_series,
-    load_tso_forecast_publication,
-    load_price_series,
-)
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv(ROOT / ".env")
+
+from src.data import io as data_io
+
+if not hasattr(data_io, "write_frame") or not hasattr(data_io, "resolve_write_path"):
+    data_io = importlib.reload(data_io)
+
+DATA_DIR = data_io.DATA_DIR
+io_list_areas_with_any_files = data_io.list_areas_with_any_files
+io_list_areas_with_file = data_io.list_areas_with_file
+load_demand_series = data_io.load_demand_series
+load_tso_forecast_series = data_io.load_tso_forecast_series
+load_tso_forecast_publication = data_io.load_tso_forecast_publication
+load_price_series = data_io.load_price_series
+read_frame = data_io.read_frame
+resolve_write_path = getattr(data_io, "resolve_write_path", lambda p: p)
+
+def _fallback_write_frame(df, path, index_label=None, index=True):
+    target = resolve_write_path(path)
+    Path(target).parent.mkdir(parents=True, exist_ok=True)
+    if str(target).endswith(".parquet"):
+        df.to_parquet(target)
+    else:
+        df.to_csv(target, index=index, index_label=index_label if index else None)
+    return target
+
+write_frame = getattr(data_io, "write_frame", _fallback_write_frame)
+path_exists = getattr(data_io, "path_exists", lambda p: Path(p).exists())
 from src.power_model.plants import PlantStack
 
 st.set_page_config(page_title="Power forecasts", layout="wide")
 
-DATA_DIR = Path("data")
-MARKET_DIR = Path("data/market")
+MARKET_DIR = DATA_DIR / "market"
 TIMEZONE_OPTIONS = [
     "UTC",
     "Europe/Berlin",
@@ -249,22 +277,41 @@ def _load_secrets_into_env():
     """Propagate Streamlit secrets to env vars so ingestion code can read tokens locally."""
     needs_entsoe = not os.getenv("ENTSOE_API_TOKEN")
     needs_tv = (not os.getenv("TV_USERNAME")) or (not os.getenv("TV_PASSWORD"))
-    if not needs_entsoe and not needs_tv:
+    s3_keys = [
+        "S3_BUCKET",
+        "S3_PREFIX",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_DEFAULT_REGION",
+        "AWS_REGION",
+    ]
+    needs_s3 = any(not os.getenv(k) for k in s3_keys)
+    if not needs_entsoe and not needs_tv and not needs_s3:
         return
     try:
         token = st.secrets.get("ENTSOE_API_TOKEN") or st.secrets.get("ENTSOE_TOKEN")
         tv_user = st.secrets.get("TV_USERNAME")
         tv_pwd = st.secrets.get("TV_PASSWORD")
+        s3_secret_map = {k: st.secrets.get(k) for k in s3_keys}
     except Exception:
         token = None
         tv_user = None
         tv_pwd = None
+        s3_secret_map = {}
     if needs_entsoe and token:
         os.environ["ENTSOE_API_TOKEN"] = str(token)
     if needs_tv and tv_user and not os.getenv("TV_USERNAME"):
         os.environ["TV_USERNAME"] = str(tv_user)
     if needs_tv and tv_pwd and not os.getenv("TV_PASSWORD"):
         os.environ["TV_PASSWORD"] = str(tv_pwd)
+    if needs_s3:
+        for key in s3_keys:
+            if os.getenv(key):
+                continue
+            val = s3_secret_map.get(key)
+            if val:
+                os.environ[key] = str(val)
 
 
 _load_secrets_into_env()
@@ -298,17 +345,11 @@ def _try_git_lfs_pull(include_path: str) -> tuple[bool, str]:
 
 
 def _list_areas_with_file(filename: str) -> List[str]:
-    areas: List[str] = []
-    for area_dir in DATA_DIR.iterdir():
-        if not area_dir.is_dir():
-            continue
-        if (area_dir / filename).exists():
-            areas.append(area_dir.name)
-    return sorted(areas)
+    return io_list_areas_with_file(filename)
 
 
 def _read_csv_indexed(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
+    df = read_frame(path)
     if "datetime" in df.columns:
         df["datetime"] = pd.to_datetime(df["datetime"])
         df = df.set_index("datetime")
@@ -388,9 +429,10 @@ def _format_timestamp_series(
 
 def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
     fc_path = DATA_DIR / area / "demand_forecast.csv"
-    if not fc_path.exists():
-        raise FileNotFoundError(f"No demand_forecast.csv for {area}")
-    fc = _read_csv_indexed(fc_path)
+    try:
+        fc = _read_csv_indexed(fc_path)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"No demand_forecast.csv for {area}") from exc
 
     try:
         actual = load_demand_series(area, prefer_parquet=False)
@@ -453,8 +495,14 @@ def load_price_data(
     fwd_path = DATA_DIR / area / "price_forecast.csv"
     history_path = DATA_DIR / area / "price_history_predictions.csv"
 
-    forward = _read_csv_indexed(fwd_path) if fwd_path.exists() else None
-    history = _read_csv_indexed(history_path) if history_path.exists() else None
+    try:
+        forward = _read_csv_indexed(fwd_path)
+    except FileNotFoundError:
+        forward = None
+    try:
+        history = _read_csv_indexed(history_path)
+    except FileNotFoundError:
+        history = None
     if history is not None and "pred" not in history.columns:
         if "mean" in history.columns:
             history = history.rename(columns={"mean": "pred"})
@@ -466,6 +514,9 @@ def load_price_data(
 def demand_tab():
     # Keep tab header clean; the controls below act as the section header.
     areas = _list_areas_with_file("demand_forecast.csv")
+    if not areas:
+        st.info("No demand forecasts available.")
+        return
     col_area, col_tz, col_range = st.columns([1.2, 1.0, 2.0])
     with col_area:
         area = st.selectbox(
@@ -584,7 +635,7 @@ def demand_tab():
             (
                 "Model (corrected)",
                 _series_to_list(plot_df["corrected_mean"]),
-                {"color": "#d62728", "width": 1.5, "type_": "dashed"},
+                {"color": "#1f77b4", "width": 1.5, "type_": "dashed"},
             )
         )
 
@@ -640,6 +691,9 @@ def demand_tab():
 def price_tab():
     st.subheader("Price forecasts")
     areas = _list_areas_with_file("day_ahead.csv")
+    if not areas:
+        st.info("No price data available.")
+        return
     area = st.selectbox(
         "Price area",
         options=areas,
@@ -808,14 +862,14 @@ def _load_market_commodities() -> pd.DataFrame:
         MARKET_DIR / "commodities.csv",
     ]
     for path in candidates:
-        if not path.exists():
+        if isinstance(path, Path) and path.exists() and _is_git_lfs_pointer(path):
             continue
-        if _is_git_lfs_pointer(path):
+        try:
+            df = read_frame(path)
+        except FileNotFoundError:
             continue
-        if path.suffix.lower() == ".parquet":
-            df = pd.read_parquet(path)
-        else:
-            df = pd.read_csv(path)
+        except Exception:
+            continue
         if "datetime" in df.columns:
             df["datetime"] = pd.to_datetime(df["datetime"])
             df = df.set_index("datetime")
@@ -875,7 +929,7 @@ def commodities_tab():
 
     lfs_candidate = None
     for p in [MARKET_DIR / "commodities.parquet", MARKET_DIR / "commodities.csv"]:
-        if p.exists() and _is_git_lfs_pointer(p):
+        if isinstance(p, Path) and p.exists() and _is_git_lfs_pointer(p):
             lfs_candidate = p
             break
     if lfs_candidate is not None:
@@ -916,10 +970,10 @@ def commodities_tab():
 
         with col_b:
             if not df.empty and st.button("Save to `data/market/commodities.csv`"):
-                MARKET_DIR.mkdir(parents=True, exist_ok=True)
                 out = df.copy()
                 out = out.reset_index().rename(columns={"index": "datetime"})
-                out.to_csv(MARKET_DIR / "commodities.csv", index=False)
+                out_path = resolve_write_path(MARKET_DIR / "commodities.csv")
+                write_frame(out, out_path, index=False)
                 st.success("Saved `data/market/commodities.csv`.")
 
         if df.empty:
@@ -1159,13 +1213,7 @@ def _load_demand_series_cached(area: str) -> pd.Series:
 
 
 def _list_areas_with_any_files(filenames: Tuple[str, ...]) -> List[str]:
-    areas: List[str] = []
-    for area_dir in DATA_DIR.iterdir():
-        if not area_dir.is_dir():
-            continue
-        if any((area_dir / name).exists() for name in filenames):
-            areas.append(area_dir.name)
-    return sorted(areas)
+    return io_list_areas_with_any_files(filenames)
 
 
 def _series_value_at_or_nearest(series: pd.Series, ts: pd.Timestamp) -> Tuple[pd.Timestamp, float]:

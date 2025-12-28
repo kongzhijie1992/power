@@ -69,7 +69,7 @@ def main():
         "--input2",
         "GUI_2023.csv",
         "--output",
-        "data/DE/day_ahead.csv",
+        "data/DE_LU/day_ahead.csv",
         "--sequence",
         "1",
     ]
@@ -84,7 +84,9 @@ def main():
     print("\n✅ Verifying data...")
     import pandas as pd
 
-    df = pd.read_csv("data/DE/day_ahead.csv", index_col=0, parse_dates=True)
+    from src.data.io import read_frame
+
+    df = read_frame(Path("data/DE_LU/day_ahead.csv"))
     print(f"   Rows: {len(df):,}")
     print(f"   Range: {df.index[0].date()} to {df.index[-1].date()}")
     print(f"   Missing: {df['value'].isna().sum()}")

@@ -55,7 +55,7 @@ def main(area: str, history_days: int = 90, horizon: int = 7):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--area", default="DE")
+    p.add_argument("--area", default="DE_LU")
     p.add_argument("--history-days", type=int, default=90)
     p.add_argument("--horizon", type=int, default=7)
     args = p.parse_args()

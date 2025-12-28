@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert ENTSOe GUI CSV exports to the project's hourly day-ahead CSV.
+r"""Convert ENTSOe GUI CSV exports to the project's hourly day-ahead CSV.
 
 Behavior:
 - Reads the GUI CSV with 15-minute MTU ranges and both Sequence 1/2 rows.
@@ -9,12 +9,19 @@ Behavior:
 
 Usage example:
   .venv\Scripts\python scripts\convert_entsoe.py \
-    --input "data\DE\GUI_ENERGY_PRICES_202501010000-202601010000 (1).csv" \
-    --output data\DE\day_ahead.csv --sequence 1 --resample H
+    --input "data\DE_LU\GUI_ENERGY_PRICES_202501010000-202601010000 (1).csv" \
+    --output data\DE_LU\day_ahead.csv --sequence 1 --resample H
 """
 import argparse
 from pathlib import Path
+import sys
 import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.data.io import resolve_write_path, write_frame
 
 
 def main():
@@ -104,9 +111,6 @@ def main():
 
     # per-sequence parsing and validation happens inside process_for_sequence()
 
-    # Ensure output directory exists
-    dst.parent.mkdir(parents=True, exist_ok=True)
-
     outputs = []
     if args.both:
         # derive base name from dst
@@ -115,15 +119,17 @@ def main():
         out2 = dst.parent / (base.name + "_seq2.csv")
         s1 = process_for_sequence(1)
         s2 = process_for_sequence(2)
-        s1.rename("value").to_frame().to_csv(out1, index_label="datetime")
-        s2.rename("value").to_frame().to_csv(out2, index_label="datetime")
+        out1 = resolve_write_path(out1)
+        out2 = resolve_write_path(out2)
+        write_frame(s1.rename("value").to_frame(), out1, index_label="datetime")
+        write_frame(s2.rename("value").to_frame(), out2, index_label="datetime")
         print(f"Wrote {len(s1)} rows to {out1}")
         print(f"Wrote {len(s2)} rows to {out2}")
         outputs = [out1, out2]
     else:
         s = process_for_sequence(args.sequence)
-        out = dst
-        s.rename("value").to_frame().to_csv(out, index_label="datetime")
+        out = resolve_write_path(dst)
+        write_frame(s.rename("value").to_frame(), out, index_label="datetime")
         print(f"Wrote {len(s)} rows to {out}")
         outputs = [out]
 

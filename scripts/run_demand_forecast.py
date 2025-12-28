@@ -16,9 +16,12 @@ import yaml
 import pandas as pd
 
 from src.data.io import (
+    DATA_DIR,
     load_demand_series,
     load_tso_forecast_publication,
     load_tso_forecast_series,
+    resolve_write_path,
+    write_frame,
 )
 from src.features.weather_features import add_gfs_features
 from src.models.demand_forecast import (
@@ -61,7 +64,6 @@ def _train_direct_model(area: str, days: int, weather_path: str):
         load_series.index.min(),
         load_series.index.max(),
     )
-
     weather_df = add_gfs_features(
         load_series.index, lat=0, lon=0, weather_csv=weather_path
     )
@@ -181,12 +183,13 @@ def main(area: str, days: int = 180):
     residual = compute_residual_demand(load_series, weather_df)
 
     # Persist outputs
-    out_dir = Path(f"data/{area}")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    forecasts.to_csv(out_dir / "demand_forecast.csv", index_label="datetime")
-    residual.to_frame().to_csv(out_dir / "residual_demand.csv", index_label="datetime")
-    logger.info("Saved forecast -> %s", out_dir / "demand_forecast.csv")
-    logger.info("Saved residual -> %s", out_dir / "residual_demand.csv")
+    out_dir = DATA_DIR / area
+    forecast_path = resolve_write_path(out_dir / "demand_forecast.csv")
+    residual_path = resolve_write_path(out_dir / "residual_demand.csv")
+    write_frame(forecasts, forecast_path, index_label="datetime")
+    write_frame(residual.to_frame(), residual_path, index_label="datetime")
+    logger.info("Saved forecast -> %s", forecast_path)
+    logger.info("Saved residual -> %s", residual_path)
 
 
 if __name__ == "__main__":

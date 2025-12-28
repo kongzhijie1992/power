@@ -1,16 +1,17 @@
 import pandas as pd
 from pathlib import Path
 
+from src.data.io import path_exists, read_frame
+
 
 def load_prices():
-    """Load the main price file, preferring DE_LU and falling back to DE."""
-    candidates = [Path("data/DE_LU/day_ahead.csv"), Path("data/DE/day_ahead.csv")]
-    for path in candidates:
-        if path.exists():
-            df = pd.read_csv(path)
-            df["datetime"] = pd.to_datetime(df["datetime"])
-            return path, df
-    raise SystemExit("No price file found in data/DE_LU/ or data/DE/.")
+    """Load the main price file for DE_LU."""
+    path = Path("data/DE_LU/day_ahead.csv")
+    if path_exists(path):
+        df = read_frame(path)
+        df["datetime"] = pd.to_datetime(df["datetime"])
+        return path, df
+    raise SystemExit("No price file found in data/DE_LU/.")
 
 
 price_path, df = load_prices()
@@ -23,20 +24,15 @@ print(f"Days covered: {(df['datetime'].max() - df['datetime'].min()).days}")
 print(f"Missing values: {df['value'].isna().sum()}")
 
 # Check weather (prefer matching area)
-weather_candidates = [
-    Path("data/weather/DE_LU_weather.csv"),
-    Path("data/weather/DE_weather.csv"),
-]
+weather_path = Path("data/weather/DE_LU_weather.csv")
 weather = None
-for w_path in weather_candidates:
-    if w_path.exists():
-        weather = pd.read_csv(w_path)
-        print(f"\nWeather data:")
-        print(f"File: {w_path}")
-        print(f"Rows: {len(weather):,}")
-        break
-if weather is None:
-    print("\nWeather data: data/weather/DE_LU_weather.csv not found (nor DE)")
+if path_exists(weather_path):
+    weather = read_frame(weather_path)
+    print(f"\nWeather data:")
+    print(f"File: {weather_path}")
+    print(f"Rows: {len(weather):,}")
+else:
+    print("\nWeather data: data/weather/DE_LU_weather.csv not found")
 
 # Show data volume based on actual rows
 print(f"\n=== CURRENT DATA INVENTORY ===")

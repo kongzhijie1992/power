@@ -24,6 +24,8 @@ import xml.etree.ElementTree as ET
 
 import pandas as pd
 
+from src.data.io import DATA_DIR, resolve_write_path, write_frame
+
 from src.power_model.plants import PlantStack
 
 
@@ -347,16 +349,15 @@ def main() -> None:
             print("  No matched plants with availability factors.")
             continue
 
-        area_dir = Path("data") / area
-        area_dir.mkdir(parents=True, exist_ok=True)
+        area_dir = DATA_DIR / area
         out_path = (
-            Path(args.output)
+            args.output
             if (len(areas) == 1 and args.output)
             else area_dir / "availability_factors.csv"
         )
-        out.sort_values("availability_factor", ascending=False).to_csv(
-            out_path, index=False
-        )
+        out_path = resolve_write_path(out_path)
+        out = out.sort_values("availability_factor", ascending=False)
+        write_frame(out, out_path, index=False)
         matched = out["eic_code"].nunique()
         print(f"  ✅ Saved {matched} availability factors to {out_path}")
 

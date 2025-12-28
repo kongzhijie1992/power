@@ -7,6 +7,7 @@ import pandas as pd
 
 from .contracts import TimeSeriesContract, validate_contract
 from .timeutils import add_local_time_features, ensure_utc_index
+from src.data.io import resolve_write_path, write_frame
 
 # Define strict contracts for each input stream
 PRICE_CONTRACT = TimeSeriesContract("price_da", ["price_da"], freq="1h")
@@ -96,5 +97,5 @@ def merge_inputs(
 
 
 def cache_parquet(df: pd.DataFrame, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(path)
+    target = resolve_write_path(path)
+    write_frame(df, target)

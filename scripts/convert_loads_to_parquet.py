@@ -5,9 +5,9 @@ Convert all downloaded load CSVs to Parquet for faster loading.
 Usage:
   python scripts/convert_loads_to_parquet.py
 """
-from pathlib import Path
 import pandas as pd
 
+from src.data.io import DATA_DIR, path_exists, read_frame, resolve_write_path, write_frame
 AREAS = [
     "DE_LU",
     "FR",
@@ -46,15 +46,15 @@ AREAS = [
 
 
 def convert_area(area: str):
-    csv_path = Path(f"data/{area}/load_real.csv")
-    pq_path = Path(f"data/{area}/load_real.parquet")
-    if not csv_path.exists():
+    csv_path = DATA_DIR / area / "load_real.csv"
+    pq_path = DATA_DIR / area / "load_real.parquet"
+    if not path_exists(csv_path):
         print(f"{area}: load CSV missing, skipping ({csv_path})")
         return
-    df = pd.read_csv(csv_path, parse_dates=["datetime"])
-    pq_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(pq_path, index=False)
-    print(f"{area}: wrote {len(df):,} rows to {pq_path}")
+    df = read_frame(csv_path)
+    out_path = resolve_write_path(pq_path)
+    write_frame(df, out_path, index=False)
+    print(f"{area}: wrote {len(df):,} rows to {out_path}")
 
 
 def main():

@@ -36,7 +36,7 @@ def check_files():
     if not (csv_2024.exists() and csv_2023.exists()):
         print("\n❌ Missing files! Please download from ENTSOE first:")
         print("   https://www.entsoe.eu/data/energy-prices-data/")
-        print("\n   1. Set: Market Area = Germany (DE)")
+        print("\n   1. Set: Market Area = Germany/Luxembourg (DE_LU)")
         print("   2. Set: Data Type = Day-ahead prices")
         print("   3. Date From = 01/01/2024, Date To = 31/12/2024")
         print("   4. Download CSV → Save as GUI_2024.csv")

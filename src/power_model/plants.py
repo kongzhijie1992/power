@@ -7,6 +7,8 @@ from typing import Iterable, List, Optional
 
 import pandas as pd
 
+from src.data.io import DATA_DIR, path_exists, read_frame, resolve_write_path, write_frame
+
 OPSD_URL = "https://data.open-power-system-data.org/conventional_power_plants/latest/conventional_power_plants_EU.csv"
 RENEWABLE_URL = "https://data.open-power-system-data.org/renewable_power_plants/latest/renewable_power_plants_EU.csv"
 RENEWABLE_DISTRIBUTED_THRESHOLD_MW = 5.0
@@ -294,12 +296,12 @@ def fetch_opsd_conventional(
 ) -> pd.DataFrame:
     """Download OPSD conventional power plants CSV (or load from cache)."""
     if cache_path is None:
-        cache_path = Path("data/external/opsd_conventional_power_plants.csv")
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    if cache_path.exists() and not force:
-        return pd.read_csv(cache_path)
+        cache_path = DATA_DIR / "external" / "opsd_conventional_power_plants.csv"
+    cache_out = resolve_write_path(cache_path)
+    if path_exists(cache_out) and not force:
+        return read_frame(cache_out)
     df = pd.read_csv(OPSD_URL)
-    df.to_csv(cache_path, index=False)
+    write_frame(df, cache_out, index=False)
     return df
 
 
@@ -329,10 +331,10 @@ def fetch_opsd_renewable(
     We keep aggregated onshore/offshore wind and solar (utility/distributed) per country to avoid multi-million rows.
     """
     if cache_path is None:
-        cache_path = Path("data/external/opsd_renewable_power_plants_agg.csv")
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    if cache_path.exists() and not force:
-        return pd.read_csv(cache_path)
+        cache_path = DATA_DIR / "external" / "opsd_renewable_power_plants_agg.csv"
+    cache_out = resolve_write_path(cache_path)
+    if path_exists(cache_out) and not force:
+        return read_frame(cache_out)
 
     usecols = [
         "electrical_capacity",
@@ -368,7 +370,7 @@ def fetch_opsd_renewable(
     grouped["additional_info"] = pd.NA
     grouped["lat"] = pd.NA
     grouped["lon"] = pd.NA
-    grouped.to_csv(cache_path, index=False)
+    write_frame(grouped, cache_out, index=False)
     return grouped
 
 
