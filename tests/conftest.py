@@ -11,6 +11,7 @@ import numpy as np
 import tempfile
 
 from src.ingest.ingest_all import synthetic_area_series
+import src.data.io as data_io
 
 
 @pytest.fixture
@@ -163,3 +164,13 @@ def pytest_collection_modifyitems(config, items):
             or "corrupt" in item.nodeid
         ):
             item.add_marker(pytest.mark.edge_case)
+
+
+@pytest.fixture(autouse=True)
+def _disable_s3_for_tests(monkeypatch):
+    """Force tests to use local IO instead of S3."""
+    monkeypatch.setattr(data_io, "_S3_FS", None, raising=False)
+    monkeypatch.setattr(data_io, "_s3_config", lambda: None, raising=False)
+    monkeypatch.setattr(data_io, "_s3_enabled", lambda: False, raising=False)
+    monkeypatch.setattr(data_io, "_s3_only", lambda: False, raising=False)
+    yield
