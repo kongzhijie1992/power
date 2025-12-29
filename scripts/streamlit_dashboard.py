@@ -599,7 +599,7 @@ def load_price_data(
     area: str,
 ) -> Tuple[pd.Series, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     try:
-        actual = load_price_series(area).sort_index()
+        actual = load_price_series(area, prefer_parquet=False).sort_index()
     except FileNotFoundError:
         actual = pd.Series(dtype=float)
     except Exception as exc:  # noqa: BLE001
