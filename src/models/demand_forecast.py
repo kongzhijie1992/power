@@ -39,7 +39,14 @@ def _calendar_features(
     df["hour"] = index.hour
     df["dow"] = index.dayofweek
     df["month"] = index.month
+    df["day_of_year"] = index.dayofyear
     df["is_weekend"] = df["dow"].isin([5, 6]).astype(int)
+    df["is_month_start"] = index.is_month_start.astype(int)
+    df["is_month_end"] = index.is_month_end.astype(int)
+    df["is_quarter_start"] = index.is_quarter_start.astype(int)
+    df["is_quarter_end"] = index.is_quarter_end.astype(int)
+    df["is_year_start"] = index.is_year_start.astype(int)
+    df["is_year_end"] = index.is_year_end.astype(int)
     # simple DST proxy: last Sunday of March/October for EU CET/CEST zones
     df["is_dst_transition"] = (
         (df.index.month.isin([3, 10])) & (df.index.dayofweek == 6)
@@ -63,6 +70,8 @@ def _calendar_features(
     df["dow_cos"] = np.cos(2 * np.pi * df["dow"] / 7)
     df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
     df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
+    df["doy_sin"] = np.sin(2 * np.pi * df["day_of_year"] / 365.25)
+    df["doy_cos"] = np.cos(2 * np.pi * df["day_of_year"] / 365.25)
     return df
 
 
@@ -108,7 +117,9 @@ def _augment_temperature_features(
 def prepare_demand_features(
     load: pd.Series,
     weather: pd.DataFrame = None,
-    add_lags: Iterable[int] = (24, 168),
+    regional_covariates: pd.DataFrame = None,
+    add_lags: Iterable[int] = (24, 48, 168),
+    rolling_windows: Iterable[int] = (24, 168),
     country: str = None,
 ) -> Tuple[pd.DataFrame, pd.Series]:
     """Build a feature matrix for demand forecasting."""
@@ -118,15 +129,43 @@ def prepare_demand_features(
         w = _augment_temperature_features(weather)
         if isinstance(w.index, pd.DatetimeIndex):
             # Avoid backfilling with future values; fill missing with 0 as a neutral fallback.
-            w = w.reindex(load.index).ffill().fillna(0)
+            w = w.reindex(load.index)
+            for col in w.columns:
+                feats[f"{col}_missing"] = w[col].isna().astype(int)
+            w = w.ffill().fillna(0)
         feats = pd.concat([feats, w], axis=1)
+    if regional_covariates is not None:
+        rc = regional_covariates.copy()
+        if isinstance(rc.index, pd.DatetimeIndex):
+            rc = rc.reindex(load.index)
+            for col in rc.columns:
+                feats[f"{col}_missing"] = rc[col].isna().astype(int)
+            rc = rc.ffill().fillna(0)
+        feats = pd.concat([feats, rc], axis=1)
     if add_lags:
         for lag in add_lags:
-            feats[f"lag_{lag}h"] = load.shift(lag)
+            lagged = load.shift(lag)
+            feats[f"lag_{lag}h"] = lagged
+            feats[f"lag_{lag}h_missing"] = lagged.isna().astype(int)
     # short ramp
-    feats["lag_1h"] = load.shift(1)
-    feats["ramp_1h"] = load.diff(1)
-    feats["ramp_24h"] = load.diff(24)
+    lag_1h = load.shift(1)
+    feats["lag_1h"] = lag_1h
+    feats["lag_1h_missing"] = lag_1h.isna().astype(int)
+    ramp_1h = load.diff(1)
+    feats["ramp_1h"] = ramp_1h
+    feats["ramp_1h_missing"] = ramp_1h.isna().astype(int)
+    ramp_24h = load.diff(24)
+    feats["ramp_24h"] = ramp_24h
+    feats["ramp_24h_missing"] = ramp_24h.isna().astype(int)
+    shifted = load.shift(1)
+    if rolling_windows:
+        for window in rolling_windows:
+            rmean = shifted.rolling(window).mean()
+            rstd = shifted.rolling(window).std()
+            feats[f"rmean_{window}h"] = rmean
+            feats[f"rstd_{window}h"] = rstd
+            feats[f"rmean_{window}h_missing"] = rmean.isna().astype(int)
+            feats[f"rstd_{window}h_missing"] = rstd.isna().astype(int)
     df = pd.concat([feats, load.rename("target")], axis=1).dropna()
     y = df.pop("target")
     X = df
@@ -341,36 +380,52 @@ def prepare_error_features(
 
     feats = _calendar_features(df.index, country=country)
     if weather is not None:
-        w = (
-            _augment_temperature_features(weather)
-            .reindex(df.index)
-            .ffill()
-            .fillna(0)
-        )
+        w = _augment_temperature_features(weather).reindex(df.index)
+        for col in w.columns:
+            feats[f"{col}_missing"] = w[col].isna().astype(int)
+        w = w.ffill().fillna(0)
         feats = pd.concat([feats, w], axis=1)
     feats["forecast"] = df["forecast"]
     # forecast lags/ramps
-    feats["forecast_lag_1h"] = df["forecast"].shift(freq=pd.Timedelta(hours=1))
-    feats["forecast_lag_24h"] = df["forecast"].shift(
+    forecast_lag_1h = df["forecast"].shift(freq=pd.Timedelta(hours=1))
+    forecast_lag_24h = df["forecast"].shift(
         freq=pd.Timedelta(hours=24)
     )
+    feats["forecast_lag_1h"] = forecast_lag_1h
+    feats["forecast_lag_24h"] = forecast_lag_24h
+    feats["forecast_lag_1h_missing"] = forecast_lag_1h.isna().astype(int)
+    feats["forecast_lag_24h_missing"] = forecast_lag_24h.isna().astype(int)
     # Use backward-looking ramps (t - t-1) to avoid leakage from future values.
-    feats["forecast_ramp_1h"] = df["forecast"].diff()
-    feats["forecast_ramp_24h"] = df["forecast"] - df["forecast"].shift(
+    forecast_ramp_1h = df["forecast"].diff()
+    forecast_ramp_24h = df["forecast"] - df["forecast"].shift(
         freq=pd.Timedelta(hours=24)
     )
+    feats["forecast_ramp_1h"] = forecast_ramp_1h
+    feats["forecast_ramp_24h"] = forecast_ramp_24h
+    feats["forecast_ramp_1h_missing"] = forecast_ramp_1h.isna().astype(int)
+    feats["forecast_ramp_24h_missing"] = forecast_ramp_24h.isna().astype(int)
     # actual load lags/ramps
-    feats["actual_lag_1h"] = df["actual"].shift(freq=pd.Timedelta(hours=1))
-    feats["actual_lag_24h"] = df["actual"].shift(freq=pd.Timedelta(hours=24))
-    feats["actual_ramp_1h"] = df["actual"].diff()
-    feats["actual_ramp_24h"] = df["actual"] - df["actual"].shift(
+    actual_lag_1h = df["actual"].shift(freq=pd.Timedelta(hours=1))
+    actual_lag_24h = df["actual"].shift(freq=pd.Timedelta(hours=24))
+    actual_ramp_1h = df["actual"].diff()
+    actual_ramp_24h = df["actual"] - df["actual"].shift(
         freq=pd.Timedelta(hours=24)
     )
+    feats["actual_lag_1h"] = actual_lag_1h
+    feats["actual_lag_24h"] = actual_lag_24h
+    feats["actual_ramp_1h"] = actual_ramp_1h
+    feats["actual_ramp_24h"] = actual_ramp_24h
+    feats["actual_lag_1h_missing"] = actual_lag_1h.isna().astype(int)
+    feats["actual_lag_24h_missing"] = actual_lag_24h.isna().astype(int)
+    feats["actual_ramp_1h_missing"] = actual_ramp_1h.isna().astype(int)
+    feats["actual_ramp_24h_missing"] = actual_ramp_24h.isna().astype(int)
 
     if add_lags:
         for lag in add_lags:
             lag_delta = pd.Timedelta(hours=lag)
-            feats[f"error_lag_{lag}h"] = error.shift(freq=lag_delta)
+            err_lag = error.shift(freq=lag_delta)
+            feats[f"error_lag_{lag}h"] = err_lag
+            feats[f"error_lag_{lag}h_missing"] = err_lag.isna().astype(int)
 
     full = pd.concat([feats, error.rename("target")], axis=1).dropna()
     y = full.pop("target")
@@ -391,16 +446,11 @@ def build_future_error_features(
     forecast = forecast.sort_index()
     feats = _calendar_features(forecast.index, country=country)
     if weather is not None:
-        feats = pd.concat(
-            [
-                feats,
-                _augment_temperature_features(weather)
-                .reindex(forecast.index)
-                .ffill()
-                .fillna(0),
-            ],
-            axis=1,
-        )
+        w = _augment_temperature_features(weather).reindex(forecast.index)
+        for col in w.columns:
+            feats[f"{col}_missing"] = w[col].isna().astype(int)
+        w = w.ffill().fillna(0)
+        feats = pd.concat([feats, w], axis=1)
     feats["forecast"] = forecast
 
     if add_lags and error_history is not None:
@@ -410,8 +460,8 @@ def build_future_error_features(
         hist_full = hist.reindex(combined_idx).ffill()
         for lag in add_lags:
             lag_delta = pd.Timedelta(hours=lag)
-            feats[f"error_lag_{lag}h"] = hist_full.shift(
-                freq=lag_delta
-            ).reindex(forecast.index)
+            err_lag = hist_full.shift(freq=lag_delta).reindex(forecast.index)
+            feats[f"error_lag_{lag}h"] = err_lag
+            feats[f"error_lag_{lag}h_missing"] = err_lag.isna().astype(int)
     # Forward-fill only; never backfill time-series features with future values.
     return feats.ffill().fillna(0)

@@ -84,13 +84,32 @@ def main():
     print("\n✅ Verifying data...")
     import pandas as pd
 
-    from src.data.io import read_frame
+    from src.data.io import read_csv_indexed, read_frame
+    from src.data.validation import audit_timeseries, format_audit
+    from src.power_model.timeutils import ensure_utc_index
 
-    df = read_frame(Path("data/DE_LU/day_ahead.csv"))
+    path = Path("data/DE_LU/day_ahead.csv")
+    if path.suffix.lower() == ".csv":
+        df = read_csv_indexed(path)
+    else:
+        df = read_frame(path)
+        if "datetime" in df.columns:
+            df["datetime"] = pd.to_datetime(
+                df["datetime"], utc=True, errors="coerce"
+            )
+            df = df.set_index("datetime")
+    if isinstance(df.index, pd.DatetimeIndex):
+        df = ensure_utc_index(df)
     print(f"   Rows: {len(df):,}")
     print(f"   Range: {df.index[0].date()} to {df.index[-1].date()}")
     print(f"   Missing: {df['value'].isna().sum()}")
     print(f"   Mean: {df['value'].mean():.2f} EUR/MWh")
+    audit = audit_timeseries(df, columns=["value"], freq="1h")
+    audit_lines = format_audit(audit)
+    if audit_lines:
+        print("\n🔎 Data quality audit:")
+        for line in audit_lines:
+            print(f"   - {line}")
 
     # Test
     print("\n🧪 Running tests...")

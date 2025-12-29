@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+import logging
 
 import pandas as pd
 
-from .contracts import TimeSeriesContract, validate_contract
+from .contracts import TimeSeriesContract, validate_contract, is_utc_timezone
 from .timeutils import add_local_time_features, ensure_utc_index
 from src.data.io import resolve_write_path, write_frame
+from src.data.validation import audit_timeseries, format_audit
+
+logger = logging.getLogger(__name__)
 
 # Define strict contracts for each input stream
 PRICE_CONTRACT = TimeSeriesContract("price_da", ["price_da"], freq="1h")
@@ -55,7 +59,26 @@ def load_parquet_contract(
             df.index, pd.DatetimeIndex
         ):
             df = df.set_index("datetime")
+    if isinstance(df.index, pd.DatetimeIndex):
+        if df.index.tz is None:
+            logger.warning(
+                "%s: tz-naive index detected; assuming UTC", contract.name
+            )
+        elif not is_utc_timezone(df.index.tz):
+            logger.warning(
+                "%s: non-UTC timezone %s detected; converting to UTC",
+                contract.name,
+                df.index.tz,
+            )
     df = ensure_utc_index(df)
+    audit = audit_timeseries(
+        df, columns=contract.columns, freq=contract.freq
+    )
+    for line in format_audit(audit):
+        if "outliers" in line:
+            logger.warning("%s: %s", contract.name, line)
+        else:
+            logger.info("%s: %s", contract.name, line)
     return validate_contract(df, contract)
 
 
