@@ -158,7 +158,7 @@ Dependencies
 
 **Required:**
 - `pandas`, `numpy`, `requests`, `yaml`
-- `entsoe-py` — ENTSO-E API client
+- ENTSO-E API (direct requests) — day-ahead prices and load data
 - `pulp` — MILP solver wrapper (CBC by default; Gurobi/CPLEX optional)
 - `lightgbm`, `scikit-learn` — forecasting models
 - `pyarrow` — Parquet support

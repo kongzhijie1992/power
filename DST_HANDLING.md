@@ -33,8 +33,8 @@ All timestamps are internally stored and processed in **UTC (Coordinated Univers
 **File:** `src/ingest/entsoe_client.py`
 
 ```python
-# entsoe-py returns timezone-aware series (Europe timezone); convert to UTC naive
-series = series.tz_convert('UTC').tz_localize(None)
+# ENTSO-E API timestamps are UTC; normalize to UTC naive for storage
+series.index = series.index.tz_convert('UTC').tz_localize(None)
 ```
 
 **Why this approach?**
@@ -104,7 +104,7 @@ Tests verify:
    - Timezone-aware UTC
 
 3. **ENTSOE Client Conversion**
-   - Simulates entsoe-py returning Europe/Berlin timezone-aware data
+   - Simulates timezone-aware data around DST
    - Verifies conversion to UTC naive preserves all rows
    - Ensures monotonic increase with no gaps
 
@@ -125,7 +125,7 @@ Tests verify:
 1. ENTSOE API returns:
    2025-03-30 02:00:00+02:00 CEST (110.5 EUR/MWh)
    ↓
-2. entsoe_client.py converts:
+2. entsoe_client.py normalizes:
    tz_convert('UTC') → 2025-03-30 00:00:00 (UTC)
    tz_localize(None) → 2025-03-30 00:00:00 (naive, stored as UTC)
    ↓

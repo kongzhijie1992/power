@@ -7,6 +7,7 @@ Usage:
 """
 import sys
 from pathlib import Path
+import os
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -34,6 +35,29 @@ from src.models.demand_forecast import (
     compute_residual_demand,
 )
 from src.models import demand_forecast as df_mod
+
+ROOT = Path(__file__).resolve().parents[1]
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv(ROOT / ".env", override=True)
+else:
+    env_path = ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+if not os.getenv("AWS_DEFAULT_REGION") and not os.getenv("AWS_REGION"):
+    os.environ["AWS_DEFAULT_REGION"] = "eu-north-1"
+if not os.getenv("S3_BUCKET"):
+    os.environ["S3_BUCKET"] = "zkong-power"
+if not os.getenv("S3_PREFIX"):
+    os.environ["S3_PREFIX"] = "stack-model/data"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
