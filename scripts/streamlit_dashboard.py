@@ -602,6 +602,9 @@ def load_price_data(
         actual = load_price_series(area).sort_index()
     except FileNotFoundError:
         actual = pd.Series(dtype=float)
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"Failed to load actual price series for {area}: {exc}")
+        actual = pd.Series(dtype=float)
     if (
         isinstance(actual.index, pd.DatetimeIndex)
         and actual.index.tz is not None
