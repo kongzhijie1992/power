@@ -144,11 +144,57 @@ def predict_quantile(
     days: int = 7,
     lat: float = 52.5,
     lon: float = 13.4,
+    method: str = "quantile",
+    n_bootstrap: int = 200,
+    random_state: Optional[int] = 42,
 ) -> Dict[float, pd.Series]:
-    """Generate quantile forecasts using quantile models."""
+    """Generate quantile forecasts using quantile or bootstrap methods."""
+    if method == "bootstrap":
+        return bootstrap_prediction_intervals(
+            history,
+            days=days,
+            n_bootstrap=n_bootstrap,
+            random_state=random_state,
+        )
     if models is None:
         naive = seasonal_naive_forecast(history, days=days)
         return {0.1: naive * 0.9, 0.5: naive, 0.9: naive * 1.1}
     # simplified: use seasonal naive for all quantiles (proper recursive prediction is advanced)
     naive = seasonal_naive_forecast(history, days=days)
     return {q: naive for q in models.keys()}
+
+
+def bootstrap_prediction_intervals(
+    history: pd.Series,
+    days: int = 7,
+    n_bootstrap: int = 200,
+    quantiles=(0.1, 0.5, 0.9),
+    random_state: Optional[int] = 42,
+) -> Dict[float, pd.Series]:
+    """Estimate prediction intervals by bootstrapping residuals."""
+    rng = np.random.default_rng(random_state)
+    history = history.sort_index()
+    naive = seasonal_naive_forecast(history, days=days)
+    if len(history) < 48:
+        return {q: naive for q in quantiles}
+    hist = history.copy()
+    if hist.index.tz is not None:
+        hist.index = hist.index.tz_convert("UTC").tz_localize(None)
+    df = hist.to_frame("y")
+    df["hour"] = df.index.hour
+    df["dayofweek"] = df.index.dayofweek
+    pivot = df.groupby(["dayofweek", "hour"])["y"].mean()
+    fitted = df.apply(
+        lambda row: pivot.get((row["dayofweek"], row["hour"])), axis=1
+    )
+    residuals = (df["y"] - fitted).dropna()
+    if residuals.empty:
+        return {q: naive for q in quantiles}
+    residual_samples = rng.choice(residuals.values, size=(n_bootstrap, len(naive)))
+    sims = residual_samples + naive.values
+    quantile_map = {}
+    for q in quantiles:
+        quantile_map[q] = pd.Series(
+            np.quantile(sims, q, axis=0), index=naive.index
+        )
+    return quantile_map
