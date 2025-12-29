@@ -124,7 +124,14 @@ def _s3_path_for_local(path: Path) -> Optional[str]:
 
 def _path_exists(path: Union[str, Path]) -> bool:
     if _is_s3_path(path):
-        return _get_s3_fs().exists(path)
+        fs = _get_s3_fs()
+        try:
+            return fs.isfile(path)
+        except Exception:
+            try:
+                return fs.exists(path)
+            except Exception:
+                return False
     return Path(path).exists()
 
 
