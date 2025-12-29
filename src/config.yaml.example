@@ -49,3 +49,22 @@ paths:
 data:
   history_days: 90
   forecast_horizon_days: 7
+
+# Feature toggles for pipelines
+features:
+  use_weather: true
+  enable_quantile_models: true
+
+# Model parameters for reproducible training
+model:
+  cv_splits: 3
+  num_boost_round: 200
+  lgbm_params:
+    objective: regression
+    metric: rmse
+    verbosity: -1
+    num_leaves: 31
+
+# Artifact/versioning output
+artifacts:
+  dir: "artifacts"
