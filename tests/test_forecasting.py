@@ -11,7 +11,11 @@ import numpy as np
 import datetime as dt
 
 from src.ingest.ingest_all import synthetic_area_series
-from src.models.forecast import make_features, seasonal_naive_forecast
+from src.models.forecast import (
+    make_features,
+    seasonal_naive_forecast,
+    weekday_hour_average_forecast,
+)
 from src.models.forecast_cv import (
     build_features_with_weather,
     cv_train_lgbm,
@@ -112,6 +116,28 @@ class TestSeasonalNaiveForecasting(unittest.TestCase):
         night_avg = forecast.iloc[::24][:3].mean()
         day_avg = forecast.iloc[12::24][:3].mean()
         # Prices typically higher during day (trend visible)
+        self.assertNotEqual(night_avg, day_avg)
+
+
+class TestWeekdayHourAverageForecasting(unittest.TestCase):
+    """Test weekday/hour average forecaster."""
+
+    def setUp(self):
+        """Create synthetic price series."""
+        self.prices = synthetic_area_series("DE", days=30)
+
+    def test_weekday_hour_average_length(self):
+        forecast = weekday_hour_average_forecast(self.prices, days=7)
+        self.assertEqual(len(forecast), 7 * 24)
+
+    def test_weekday_hour_average_index(self):
+        forecast = weekday_hour_average_forecast(self.prices, days=7)
+        self.assertIsInstance(forecast.index, pd.DatetimeIndex)
+
+    def test_weekday_hour_average_daily_pattern(self):
+        forecast = weekday_hour_average_forecast(self.prices, days=7)
+        night_avg = forecast.iloc[::24][:3].mean()
+        day_avg = forecast.iloc[12::24][:3].mean()
         self.assertNotEqual(night_avg, day_avg)
 
 

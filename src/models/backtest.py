@@ -107,3 +107,51 @@ def walk_forward_predict_series(
     ).sort_index()
     df["actual"] = series.reindex(df.index)
     return df[["pred", "actual", "train_end"]]
+
+
+def error_breakdown(
+    forecast_df: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    """Summarize forecast errors by horizon and seasonality buckets."""
+    if forecast_df.empty:
+        empty = pd.DataFrame()
+        return {
+            "by_horizon": empty,
+            "by_hour": empty,
+            "by_dayofweek": empty,
+            "by_month": empty,
+        }
+
+    df = forecast_df.dropna(subset=["pred", "actual", "train_end"]).copy()
+    df["error"] = df["actual"] - df["pred"]
+    df["abs_error"] = df["error"].abs()
+    df["horizon_hours"] = (
+        (df.index - df["train_end"]).dt.total_seconds() / 3600.0
+    ).round().astype(int)
+    df["hour"] = df.index.hour
+    df["dayofweek"] = df.index.dayofweek
+    df["month"] = df.index.month
+
+    by_horizon = df.groupby("horizon_hours")["abs_error"].agg(
+        count="count",
+        mae="mean",
+        rmse=lambda x: float(np.sqrt(np.mean(x**2))),
+    )
+    by_hour = df.groupby("hour")["abs_error"].agg(
+        count="count",
+        mae="mean",
+    )
+    by_dayofweek = df.groupby("dayofweek")["abs_error"].agg(
+        count="count",
+        mae="mean",
+    )
+    by_month = df.groupby("month")["abs_error"].agg(
+        count="count",
+        mae="mean",
+    )
+    return {
+        "by_horizon": by_horizon,
+        "by_hour": by_hour,
+        "by_dayofweek": by_dayofweek,
+        "by_month": by_month,
+    }

@@ -11,7 +11,11 @@ import numpy as np
 
 from src.ingest.ingest_all import synthetic_area_series
 from src.models.forecast import seasonal_naive_forecast
-from src.models.backtest import walk_forward_backtest
+from src.models.backtest import (
+    error_breakdown,
+    walk_forward_backtest,
+    walk_forward_predict_series,
+)
 
 
 class TestWalkForwardBacktest(unittest.TestCase):
@@ -138,6 +142,23 @@ class TestBacktestEdgeCases(unittest.TestCase):
         self.assertIn("rmse", results.columns)
         # Check index is datetime-like
         self.assertIsNotNone(results.index)
+
+
+class TestErrorBreakdown(unittest.TestCase):
+    """Test error breakdown summaries."""
+
+    def test_error_breakdown_outputs(self):
+        prices = synthetic_area_series("DE", days=20)
+        preds = walk_forward_predict_series(
+            prices, seasonal_naive_forecast, train_window_days=7, horizon_days=2
+        )
+        summary = error_breakdown(preds)
+        self.assertIn("by_horizon", summary)
+        self.assertIn("by_hour", summary)
+        self.assertIn("by_dayofweek", summary)
+        self.assertIn("by_month", summary)
+        if not summary["by_horizon"].empty:
+            self.assertTrue((summary["by_horizon"]["mae"] >= 0).all())
 
 
 if __name__ == "__main__":

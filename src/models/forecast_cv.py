@@ -19,10 +19,11 @@ try:
 except Exception:
     lgb = None
 
-from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.model_selection import TimeSeriesSplit
 
 from .forecast import make_features, seasonal_naive_forecast
+from .time_series_cv import rolling_time_series_split
 
 try:
     from src.features.weather_features import add_gfs_features
@@ -59,15 +60,32 @@ def cv_train_lgbm(
     params: Optional[dict] = None,
     lat: float = 52.5,
     lon: float = 13.4,
+    cv_strategy: str = "expanding",
+    train_window_days: int = 60,
+    test_window_days: int = 7,
+    step_days: Optional[int] = None,
 ) -> Tuple[Optional[object], dict]:
     """Train LightGBM with time-series CV, optionally using weather features."""
     if lgb is None:
         logger.warning("lightgbm not installed")
         return None, {"rmse": None, "note": "lightgbm not installed"}
     df, feature_cols = build_features_with_weather(series, lat=lat, lon=lon)
+    df = df.sort_index()
     X = df.drop(columns=["y"])
     y = df["y"]
-    tscv = TimeSeriesSplit(n_splits=n_splits)
+    split_iter = list(
+        rolling_time_series_split(
+            X.index,
+            train_window=pd.Timedelta(days=train_window_days),
+            test_window=pd.Timedelta(days=test_window_days),
+            step=pd.Timedelta(days=step_days) if step_days is not None else None,
+            expanding=cv_strategy == "expanding",
+            n_splits=n_splits,
+        )
+    )
+    if not split_iter:
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        split_iter = list(tscv.split(X))
     rmses = []
     maes = []
     models = []
@@ -77,7 +95,7 @@ def cv_train_lgbm(
         "verbosity": -1,
         "num_leaves": 31,
     }
-    for train_idx, test_idx in tscv.split(X):
+    for train_idx, test_idx in split_iter:
         Xtr, Xte = X.iloc[train_idx], X.iloc[test_idx]
         ytr, yte = y.iloc[train_idx], y.iloc[test_idx]
         dtrain = lgb.Dataset(Xtr, label=ytr)

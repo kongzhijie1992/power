@@ -27,17 +27,30 @@ def make_features(series: pd.Series) -> pd.DataFrame:
     return df
 
 
-def seasonal_naive_forecast(series: pd.Series, days: int = 7) -> pd.Series:
-    """Forecast next `days` days (hourly) using historical average by (hour, dayofweek)."""
+def _to_utc(series: pd.Series) -> pd.Series:
+    if not isinstance(series.index, pd.DatetimeIndex):
+        raise ValueError("series must have a DatetimeIndex")
+    if series.index.tz is None:
+        series = series.tz_localize("UTC")
+    else:
+        series = series.tz_convert("UTC")
+    return series
+
+
+def _future_index(series: pd.Series, days: int) -> pd.DatetimeIndex:
     last = series.index.max()
-    freq = series.index.inferred_freq or "h"
     periods = days * 24
-    idx = pd.date_range(
+    return pd.date_range(
         start=last + pd.Timedelta(hours=1), periods=periods, freq="h", tz="UTC"
     )
-    # historical averages
-    hist = series.copy()
-    hist = hist.tz_localize("UTC") if hist.index.tz is None else hist
+
+
+def weekday_hour_average_forecast(
+    series: pd.Series, days: int = 7
+) -> pd.Series:
+    """Forecast using historical average by (dayofweek, hour)."""
+    hist = _to_utc(series.copy())
+    idx = _future_index(hist, days)
     df = hist.to_frame("y")
     df["hour"] = df.index.hour
     df["dayofweek"] = df.index.dayofweek
@@ -51,6 +64,23 @@ def seasonal_naive_forecast(series: pd.Series, days: int = 7) -> pd.Series:
             val = hour_means.get(ts.hour, global_mean)
         if pd.isna(val):
             val = global_mean
+        preds.append(val)
+    s = pd.Series(preds, index=idx)
+    s.index = s.index.tz_convert(None)
+    return s
+
+
+def seasonal_naive_forecast(series: pd.Series, days: int = 7) -> pd.Series:
+    """Forecast next `days` days (hourly) using last week's same-hour values."""
+    hist = _to_utc(series.copy())
+    idx = _future_index(hist, days)
+    fallback = weekday_hour_average_forecast(series, days=days)
+    preds = []
+    for ts in idx:
+        prev = ts - pd.Timedelta(days=7)
+        val = hist.get(prev)
+        if pd.isna(val):
+            val = fallback.get(ts.tz_convert(None))
         preds.append(val)
     s = pd.Series(preds, index=idx)
     s.index = s.index.tz_convert(None)
