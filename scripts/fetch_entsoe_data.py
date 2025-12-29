@@ -24,9 +24,14 @@ import os
 from pathlib import Path
 import datetime as dt
 from typing import Iterable, Tuple
+import sys
 
 import requests
 import pandas as pd
+
+ROOT = Path(__file__).parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 # Try to load .env file if python-dotenv is available
 try:
@@ -89,6 +94,10 @@ def fetch_entsoe_prices(
     """Fetch day-ahead prices from ENTSO-E API and return a DataFrame."""
     # ENTSO-E area code mappings (EIC codes)
     area_map = {
+        "AL": "10YAL-KESH-----5",  # Albania
+        "BA": "10YBA-JPCC-----D",  # Bosnia and Herzegovina
+        "CY": "10YCY-1001A0003J",  # Cyprus
+        "DE": "10Y1001A1001A83F",  # Germany
         "DE_LU": "10Y1001A1001A82H",  # Germany/Luxembourg
         "FR": "10YFR-RTE------C",  # France
         "IT": "10Y1001A1001A73I",  # Italy (A44 area EIC)
@@ -110,6 +119,11 @@ def fetch_entsoe_prices(
         "SI": "10YSI-ELES-----O",  # Slovenia
         "HR": "10YHR-HEP------M",  # Croatia
         "GR": "10YGR-HTSO-----Y",  # Greece
+        "LU": "10YLU-CEGEDEL-NQ",  # Luxembourg
+        "ME": "10YCS-CG-TSO---S",  # Montenegro
+        "MK": "10YMK-MEPSO----8",  # North Macedonia
+        "MT": "10Y1001A1001A93C",  # Malta
+        "RS": "10YCS-SERBIATSOV",  # Serbia
         "DK1": "10YDK-1--------W",  # Denmark West
         "DK2": "10YDK-2--------M",  # Denmark East
         "FI": "10YFI-1--------U",  # Finland
@@ -419,6 +433,10 @@ def main():
 
     # Default lat/lon per area (fallback to provided lat/lon)
     default_lat_lon = {
+        "AL": (41.3275, 19.8187),
+        "BA": (43.8563, 18.4131),
+        "CY": (35.1856, 33.3823),
+        "DE": (52.52, 13.405),
         "DE_LU": (52.52, 13.405),
         "FR": (48.8566, 2.3522),
         "ES": (40.4168, -3.7038),
@@ -437,6 +455,11 @@ def main():
         "SI": (46.0569, 14.5058),
         "HR": (45.8150, 15.9819),
         "GR": (37.9838, 23.7275),
+        "LU": (49.6116, 6.1319),
+        "ME": (42.4304, 19.2594),
+        "MK": (41.9973, 21.4280),
+        "MT": (35.8989, 14.5146),
+        "RS": (44.7866, 20.4489),
         "DK1": (55.6761, 12.5683),
         "DK2": (55.6761, 12.5683),
         "FI": (60.1699, 24.9384),

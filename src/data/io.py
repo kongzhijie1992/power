@@ -340,13 +340,22 @@ def load_price_series(area: str, prefer_parquet: bool = True):
             s3_path = _s3_path_for_local(path)
             if not s3_path or not _path_exists(s3_path):
                 continue
-            df = _read_frame_from_path(s3_path)
+            try:
+                df = _read_frame_from_path(s3_path)
+            except (FileNotFoundError, OSError, ValueError):
+                continue
         else:
             s3_path = _s3_path_for_local(path) if _s3_enabled() else None
             if s3_path and _path_exists(s3_path):
-                df = _read_frame_from_path(s3_path)
+                try:
+                    df = _read_frame_from_path(s3_path)
+                except (FileNotFoundError, OSError, ValueError):
+                    continue
             elif path.exists():
-                df = _read_frame_from_path(path)
+                try:
+                    df = _read_frame_from_path(path)
+                except (FileNotFoundError, OSError, ValueError):
+                    continue
             else:
                 continue
         if "datetime" in df.columns:

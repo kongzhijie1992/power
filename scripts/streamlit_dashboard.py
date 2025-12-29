@@ -5,10 +5,34 @@ import math
 import os
 import subprocess
 import importlib
+import importlib.util
 from datetime import timedelta
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 import sys
+
+_REQUIRED_MODULES = {
+    "pandas": "pandas",
+    "streamlit": "streamlit",
+    "pyecharts": "pyecharts",
+    "streamlit_echarts": "streamlit-echarts",
+    "s3fs": "s3fs",
+    "dotenv": "python-dotenv",
+    "catboost": "catboost",
+    "sklearn": "scikit-learn",
+    "joblib": "joblib",
+}
+_missing = [
+    pkg
+    for mod, pkg in _REQUIRED_MODULES.items()
+    if importlib.util.find_spec(mod) is None
+]
+if _missing:
+    missing_list = ", ".join(sorted(set(_missing)))
+    raise RuntimeError(
+        "Missing required packages for the dashboard: "
+        f"{missing_list}. Install with pip or poetry."
+    )
 
 import pandas as pd
 import streamlit as st
@@ -30,6 +54,12 @@ if load_dotenv is not None:
     load_dotenv(ROOT / ".env", override=True)
 if not os.getenv("AWS_DEFAULT_REGION") and not os.getenv("AWS_REGION"):
     os.environ["AWS_DEFAULT_REGION"] = "eu-north-1"
+if not os.getenv("S3_BUCKET"):
+    os.environ["S3_BUCKET"] = "zkong-power"
+if not os.getenv("S3_PREFIX"):
+    os.environ["S3_PREFIX"] = "stack-model/data"
+if not os.getenv("S3_ONLY"):
+    os.environ["S3_ONLY"] = "1"
 
 from src.data import io as data_io
 
@@ -47,6 +77,7 @@ load_tso_forecast_publication = data_io.load_tso_forecast_publication
 load_price_series = data_io.load_price_series
 read_frame = data_io.read_frame
 resolve_write_path = getattr(data_io, "resolve_write_path", lambda p: p)
+resolve_data_path = getattr(data_io, "resolve_data_path", lambda p: p)
 
 
 def _fallback_write_frame(df, path, index_label=None, index=True):
@@ -273,11 +304,11 @@ def _demand_tooltip_formatter(
             }}
             if (p.seriesName === 'Actual load') {{
               var upd = actualUpdates[idx] || axis || 'n/a';
-              line += '<br/>Updated at: ' + upd;
+              line += '<br/>UpdateTime (UTC): ' + upd;
             }}
             if (p.seriesName === 'TSO forecast') {{
               var upd2 = tsoUpdates[idx] || axis || 'n/a';
-              line += '<br/>Updated at: ' + upd2;
+              line += '<br/>UpdateTime (UTC): ' + upd2;
             }}
             lines.push(line);
           }}
@@ -378,6 +409,38 @@ def _read_csv_indexed(path: Path) -> pd.DataFrame:
     return df
 
 
+def _path_last_modified(path: Union[str, Path]) -> Optional[pd.Timestamp]:
+    try:
+        if isinstance(path, str) and path.startswith("s3://"):
+            info = data_io._get_s3_fs().info(path)
+            ts = info.get("LastModified") or info.get("last_modified")
+            if ts is None:
+                return None
+            return pd.to_datetime(ts, utc=True)
+        return pd.Timestamp.fromtimestamp(
+            Path(path).stat().st_mtime, tz="UTC"
+        )
+    except Exception:
+        return None
+
+
+def _latest_file_update(paths: List[Path]) -> Optional[pd.Timestamp]:
+    latest = None
+    for path in paths:
+        try:
+            resolved = resolve_data_path(path)
+        except FileNotFoundError:
+            continue
+        if not path_exists(resolved):
+            continue
+        modified = _path_last_modified(resolved)
+        if modified is None:
+            continue
+        if latest is None or modified > latest:
+            latest = modified
+    return latest
+
+
 def _apply_horizon(df: pd.DataFrame, horizon: str) -> pd.DataFrame:
     if df.empty or horizon == "all":
         return df
@@ -428,6 +491,7 @@ def _format_timestamp_series(
     tz_name: str,
     default: str = "n/a",
     include_tz_label: bool = False,
+    fmt: str = "%Y-%m-%d %H:%M",
 ) -> pd.Series:
     if series is None:
         return pd.Series([], dtype="object")
@@ -440,18 +504,43 @@ def _format_timestamp_series(
         parsed = parsed.dt.tz_convert(tz_name) if tz_name else parsed
     except Exception:
         parsed = parsed.dt.tz_convert("UTC")
-    out = parsed.dt.strftime("%Y-%m-%d %H:%M").fillna(default)
+    out = parsed.dt.strftime(fmt).fillna(default)
     if include_tz_label and tz_name:
         out = out.where(out == default, out + f" ({tz_name})")
     return out
+
+
+def _load_raw_update_time_series(area: str, filename: str) -> pd.Series:
+    path = DATA_DIR / area / filename
+    try:
+        resolved = resolve_data_path(path)
+    except FileNotFoundError:
+        return pd.Series(dtype="datetime64[ns]")
+    if not path_exists(resolved):
+        return pd.Series(dtype="datetime64[ns]")
+    df = read_frame(resolved)
+    if df.empty:
+        return pd.Series(dtype="datetime64[ns]")
+    if "DateTime(UTC)" not in df.columns or "UpdateTime(UTC)" not in df.columns:
+        return pd.Series(dtype="datetime64[ns]")
+    times = pd.to_datetime(
+        df["DateTime(UTC)"], dayfirst=True, errors="coerce", utc=True
+    )
+    updates = pd.to_datetime(
+        df["UpdateTime(UTC)"], dayfirst=True, errors="coerce", utc=True
+    )
+    series = pd.Series(updates.values, index=times)
+    series = series[~series.index.isna()]
+    series = series[~series.index.duplicated(keep="last")]
+    return series.sort_index()
 
 
 def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
     fc_path = DATA_DIR / area / "demand_forecast.csv"
     try:
         fc = _read_csv_indexed(fc_path)
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(f"No demand_forecast.csv for {area}") from exc
+    except FileNotFoundError:
+        return pd.DataFrame(), None
 
     try:
         actual = load_demand_series(area, prefer_parquet=False)
@@ -509,7 +598,10 @@ def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
 def load_price_data(
     area: str,
 ) -> Tuple[pd.Series, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
-    actual = load_price_series(area).sort_index()
+    try:
+        actual = load_price_series(area).sort_index()
+    except FileNotFoundError:
+        actual = pd.Series(dtype=float)
     if (
         isinstance(actual.index, pd.DatetimeIndex)
         and actual.index.tz is not None
@@ -605,6 +697,22 @@ def demand_tab():
     if quantiles is not None:
         quantiles = _apply_date_range(quantiles, start_date, end_date)
 
+    actual_update_series = _load_raw_update_time_series(
+        area, "load_actual_raw.csv"
+    )
+    if actual_update_series is not None and not actual_update_series.empty:
+        update_frame = actual_update_series.to_frame("upd")
+        update_frame = _convert_index_timezone(update_frame, timezone)
+        df["actual_update_time_utc"] = update_frame["upd"].reindex(df.index)
+
+    tso_update_series = _load_raw_update_time_series(
+        area, "load_forecast_raw.csv"
+    )
+    if tso_update_series is not None and not tso_update_series.empty:
+        update_frame = tso_update_series.to_frame("upd")
+        update_frame = _convert_index_timezone(update_frame, timezone)
+        df["tso_update_time_utc"] = update_frame["upd"].reindex(df.index)
+
     # Keep the demand tab responsive by default without exposing UI controls.
     fast_plot = True
     max_plot_points = 25_000
@@ -613,12 +721,32 @@ def demand_tab():
     plot_df = df.copy()
     if quantiles is not None:
         plot_df = plot_df.join(quantiles, how="left")
-    if "tso_publication_time_utc" in plot_df.columns:
+    if "tso_update_time_utc" in plot_df.columns:
         plot_df["tso_pub_local"] = _format_timestamp_series(
-            plot_df["tso_publication_time_utc"],
-            timezone,
-            include_tz_label=True,
+            plot_df["tso_update_time_utc"],
+            "UTC",
+            include_tz_label=False,
+            fmt="%d/%m/%Y %H:%M",
         )
+    else:
+        tso_pub_series = load_tso_forecast_publication(
+            area, prefer_parquet=False
+        )
+        if tso_pub_series is not None and not tso_pub_series.empty:
+            pub_frame = tso_pub_series.to_frame("pub")
+            pub_frame = _convert_index_timezone(pub_frame, timezone)
+            pub_aligned = pub_frame["pub"].reindex(plot_df.index)
+            plot_df["tso_pub_local"] = _format_timestamp_series(
+                pub_aligned,
+                timezone,
+                include_tz_label=True,
+            )
+        elif "tso_publication_time_utc" in plot_df.columns:
+            plot_df["tso_pub_local"] = _format_timestamp_series(
+                plot_df["tso_publication_time_utc"],
+                timezone,
+                include_tz_label=True,
+            )
     if fast_plot:
         plot_df = _downsample_indexed(plot_df, max_plot_points)
 
@@ -629,6 +757,7 @@ def demand_tab():
     tso_updates: List[str] = []
     q10_vals: List[Optional[float]] = []
     q90_vals: List[Optional[float]] = []
+    plot_len = len(plot_df)
 
     if {"corrected_q10", "corrected_q90"}.issubset(plot_df.columns):
         q10 = plot_df["corrected_q10"]
@@ -650,13 +779,50 @@ def demand_tab():
                 {
                     "stack": "q_band",
                     "hide_line": True,
-                    "area_color": "rgba(214,39,40,0.4)",
-                    "area_opacity": 0.4,
+                    "color": "#f2a3a3",
+                    "area_color": "rgba(242,163,163,0.45)",
+                    "area_opacity": 0.45,
                 },
             )
         )
     if "actual_load" in plot_df:
-        actual_updates = [f"{ts}{tz_label}" for ts in x]
+        actual_updates = ["n/a"] * plot_len
+        if "actual_update_time_utc" in plot_df.columns:
+            formatted = _format_timestamp_series(
+                plot_df["actual_update_time_utc"],
+                "UTC",
+                include_tz_label=False,
+                fmt="%d/%m/%Y %H:%M",
+            )
+            actual_updates = formatted.fillna("n/a").tolist()
+        else:
+            actual_update_ts = _latest_file_update(
+                [
+                    DATA_DIR / area / "load_actual.parquet",
+                    DATA_DIR / area / "load_actual.csv",
+                    DATA_DIR / area / "load_real.parquet",
+                    DATA_DIR / area / "load_real.csv",
+                    DATA_DIR / area / "load.parquet",
+                    DATA_DIR / area / "load.csv",
+                ]
+            )
+            if actual_update_ts is not None:
+                formatted = _format_timestamp_series(
+                    pd.Series([actual_update_ts]),
+                    timezone,
+                    include_tz_label=True,
+                )
+                if not formatted.empty:
+                    actual_updates = [formatted.iloc[0]] * plot_len
+            elif "actual_load" in df and df["actual_load"].notna().any():
+                last_actual = df["actual_load"].dropna().index.max()
+                formatted = _format_timestamp_series(
+                    pd.Series([last_actual]),
+                    timezone,
+                    include_tz_label=True,
+                )
+                if not formatted.empty:
+                    actual_updates = [formatted.iloc[0]] * plot_len
         series.append(
             (
                 "Actual load",
@@ -665,12 +831,49 @@ def demand_tab():
             )
         )
     if "tso_forecast" in plot_df:
+        tso_updates = ["n/a"] * plot_len
         if "tso_pub_local" in plot_df:
             tso_updates = (
-                plot_df["tso_pub_local"].fillna("n/a").astype(str).tolist()
+                plot_df["tso_pub_local"]
+                .fillna("n/a")
+                .astype(str)
+                .tolist()
             )
-        else:
-            tso_updates = ["n/a"] * len(plot_df)
+        tso_update_ts = _latest_file_update(
+            [
+                DATA_DIR / area / "load_forecast.parquet",
+                DATA_DIR / area / "load_forecast.csv",
+            ]
+        )
+        tso_fallback = None
+        if tso_update_ts is not None:
+            formatted = _format_timestamp_series(
+                pd.Series([tso_update_ts]),
+                timezone,
+                include_tz_label=True,
+            )
+            if not formatted.empty:
+                tso_fallback = formatted.iloc[0]
+        if tso_fallback:
+            if tso_updates:
+                tso_updates = [
+                    tso_fallback if val in {"", "n/a"} else val
+                    for val in tso_updates
+                ]
+            else:
+                tso_updates = [tso_fallback] * plot_len
+        elif (
+            "tso_publication_time_utc" in df
+            and df["tso_publication_time_utc"].notna().any()
+        ):
+            last_pub = df["tso_publication_time_utc"].dropna().max()
+            formatted = _format_timestamp_series(
+                pd.Series([last_pub]),
+                timezone,
+                include_tz_label=True,
+            )
+            if not formatted.empty:
+                tso_updates = [formatted.iloc[0]] * plot_len
         series.append(
             (
                 "TSO forecast",
@@ -707,13 +910,34 @@ def demand_tab():
     if quantiles is not None:
         table = table.join(quantiles, how="left")
     table = table.sort_index()
+    tso_pub_raw = None
     if "tso_publication_time_utc" in table.columns:
-        table["tso_publication_time_utc"] = _format_timestamp_series(
-            table["tso_publication_time_utc"], timezone
+        tso_pub_raw = table["tso_publication_time_utc"]
+        table = table.drop(columns=["tso_publication_time_utc"])
+    if (
+        "tso_update_time_utc" not in table.columns
+        and tso_pub_raw is not None
+    ):
+        table["tso_update_time_utc"] = tso_pub_raw
+    if "tso_update_time_utc" in table.columns:
+        table["tso_update_time_utc"] = _format_timestamp_series(
+            table["tso_update_time_utc"],
+            "UTC",
+            include_tz_label=False,
+            fmt="%d/%m/%Y %H:%M",
+        )
+    if "actual_update_time_utc" in table.columns:
+        table["actual_update_time_utc"] = _format_timestamp_series(
+            table["actual_update_time_utc"],
+            "UTC",
+            include_tz_label=False,
+            fmt="%d/%m/%Y %H:%M",
         )
     preferred_cols = [
         "actual_load",
         "tso_forecast",
+        "actual_update_time_utc",
+        "tso_update_time_utc",
         "corrected_mean",
         "corrected_q10",
         "corrected_q50",
@@ -740,7 +964,14 @@ def demand_tab():
 
 def price_tab():
     st.subheader("Price forecasts")
-    areas = _list_areas_with_file("day_ahead.csv")
+    areas = _list_areas_with_any_files(
+        (
+            "day_ahead_real.parquet",
+            "day_ahead_real.csv",
+            "day_ahead.parquet",
+            "day_ahead.csv",
+        )
+    )
     if not areas:
         cfg = data_io._s3_config()
         region = os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION")
@@ -883,8 +1114,9 @@ def price_tab():
                 {
                     "stack": "q_band",
                     "hide_line": True,
-                    "area_color": "rgba(214,39,40,0.4)",
-                    "area_opacity": 0.4,
+                    "color": "#f2a3a3",
+                    "area_color": "rgba(242,163,163,0.45)",
+                    "area_opacity": 0.45,
                 },
             )
         )

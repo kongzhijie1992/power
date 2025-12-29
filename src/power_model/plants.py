@@ -307,7 +307,10 @@ def fetch_opsd_conventional(
         )
     cache_out = resolve_write_path(cache_path)
     if path_exists(cache_out) and not force:
-        return read_frame(cache_out)
+        try:
+            return read_frame(cache_out)
+        except (FileNotFoundError, OSError, ValueError):
+            pass
     df = pd.read_csv(OPSD_URL)
     write_frame(df, cache_out, index=False)
     return df
@@ -346,7 +349,10 @@ def fetch_opsd_renewable(
         )
     cache_out = resolve_write_path(cache_path)
     if path_exists(cache_out) and not force:
-        return read_frame(cache_out)
+        try:
+            return read_frame(cache_out)
+        except (FileNotFoundError, OSError, ValueError):
+            pass
 
     usecols = [
         "electrical_capacity",

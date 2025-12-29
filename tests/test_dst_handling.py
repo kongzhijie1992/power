@@ -261,7 +261,7 @@ class TestDSTHandling(unittest.TestCase):
 
     def test_entsoe_client_dst_handling(self):
         """Verify entsoe_client.py correctly converts timezone-aware data to UTC naive."""
-        # Simulate entsoe-py returning Europe/Berlin timezone-aware data
+        # Simulate timezone-aware data around DST
         index_berlin = pd.date_range(
             "2025-03-29", "2025-03-31", freq="h", tz="Europe/Berlin"
         )
@@ -271,7 +271,7 @@ class TestDSTHandling(unittest.TestCase):
         )
 
         # Apply the conversion logic from entsoe_client.py
-        # entsoe-py returns timezone-aware series (Europe timezone); convert to UTC naive
+        # Convert timezone-aware series to UTC naive
         converted = series.tz_convert("UTC").tz_localize(None)
 
         # Verify:
