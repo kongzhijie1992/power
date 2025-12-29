@@ -12,6 +12,7 @@
 data/DE/GUI_ENERGY_PRICES_*.csv
 data/DE/*_seq*.csv
 data/
+!src/data/
 
 # Environment variables (API tokens, secrets)
 .env

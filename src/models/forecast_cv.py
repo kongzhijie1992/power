@@ -31,7 +31,10 @@ except Exception:
 
 
 def build_features_with_weather(
-    series: pd.Series, lat: float = 52.5, lon: float = 13.4
+    series: pd.Series,
+    lat: float = 52.5,
+    lon: float = 13.4,
+    use_weather: bool = True,
 ) -> Tuple[pd.DataFrame, list]:
     """Build price features with optional weather data (wind, solar).
 
@@ -42,7 +45,7 @@ def build_features_with_weather(
     feature_cols = list(df.columns)
 
     # Try to add weather features
-    if add_gfs_features is not None:
+    if use_weather and add_gfs_features is not None:
         try:
             weather_df = add_gfs_features(series.index, lat=lat, lon=lon)
             df = pd.concat([df, weather_df], axis=1)
@@ -59,12 +62,16 @@ def cv_train_lgbm(
     params: Optional[dict] = None,
     lat: float = 52.5,
     lon: float = 13.4,
+    num_boost_round: int = 200,
+    use_weather: bool = True,
 ) -> Tuple[Optional[object], dict]:
     """Train LightGBM with time-series CV, optionally using weather features."""
     if lgb is None:
         logger.warning("lightgbm not installed")
         return None, {"rmse": None, "note": "lightgbm not installed"}
-    df, feature_cols = build_features_with_weather(series, lat=lat, lon=lon)
+    df, feature_cols = build_features_with_weather(
+        series, lat=lat, lon=lon, use_weather=use_weather
+    )
     X = df.drop(columns=["y"])
     y = df["y"]
     tscv = TimeSeriesSplit(n_splits=n_splits)
@@ -81,7 +88,7 @@ def cv_train_lgbm(
         Xtr, Xte = X.iloc[train_idx], X.iloc[test_idx]
         ytr, yte = y.iloc[train_idx], y.iloc[test_idx]
         dtrain = lgb.Dataset(Xtr, label=ytr)
-        booster = lgb.train(params, dtrain, num_boost_round=200)
+        booster = lgb.train(params, dtrain, num_boost_round=num_boost_round)
         pred = booster.predict(Xte)
         rmse = np.sqrt(mean_squared_error(yte, pred))
         mae = mean_absolute_error(yte, pred)
@@ -100,12 +107,16 @@ def quantile_models_train(
     quantiles=(0.1, 0.5, 0.9),
     lat: float = 52.5,
     lon: float = 13.4,
+    num_boost_round: int = 200,
+    use_weather: bool = True,
 ) -> Optional[Dict]:
     """Train separate LightGBM quantile models for probabilistic forecasts."""
     if lgb is None:
         logger.warning("lightgbm not installed; skipping quantile models")
         return None
-    df, _ = build_features_with_weather(series, lat=lat, lon=lon)
+    df, _ = build_features_with_weather(
+        series, lat=lat, lon=lon, use_weather=use_weather
+    )
     X = df.drop(columns=["y"])
     y = df["y"]
     models = {}
@@ -118,7 +129,7 @@ def quantile_models_train(
             "num_leaves": 31,
         }
         dtrain = lgb.Dataset(X, label=y)
-        models[q] = lgb.train(params, dtrain, num_boost_round=200)
+        models[q] = lgb.train(params, dtrain, num_boost_round=num_boost_round)
         logger.info("Trained quantile model for q=%.2f", q)
     return models
 

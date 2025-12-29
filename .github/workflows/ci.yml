@@ -35,6 +35,10 @@ jobs:
           poetry config virtualenvs.create true
           poetry install --no-interaction --no-ansi
 
+      - name: Smoke data validation + training
+        run: |
+          poetry run python scripts/ci_smoke_pipeline.py --set features.use_weather=false
+
       - name: Run tests
         run: |
           poetry run pytest tests/ -q
