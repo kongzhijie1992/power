@@ -1045,22 +1045,9 @@ def price_tab():
     forward = _apply_date_range(forward, start_date, end_date)
     history = _apply_date_range(history, start_date, end_date)
 
-    with st.expander("Performance"):
-        fast_plot = st.checkbox(
-            "Fast plotting (downsample)",
-            value=True,
-            key="price_fast_plot",
-        )
-        max_plot_points = int(
-            st.number_input(
-                "Max plot points (per series)",
-                min_value=1_000,
-                max_value=200_000,
-                value=25_000,
-                step=1_000,
-                key="price_max_plot_points",
-            )
-        )
+    # Keep the price tab responsive by default without exposing UI controls.
+    fast_plot = True
+    max_plot_points = 25_000
 
     if fast_plot:
         actual_plot = actual

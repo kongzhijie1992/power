@@ -32,6 +32,10 @@ s3fs = "^2025.9.0"
 python-dotenv = "^1.0.0"
 tvdatafeed = {git = "https://github.com/rongardF/tvdatafeed.git"}
 catboost = "^1.2.7"
+optuna = "^3.6.1"
+torch = "^2.3.0"
+pytorch-lightning = "^2.3.0"
+pytorch-forecasting = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

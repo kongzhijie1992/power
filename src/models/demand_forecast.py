@@ -29,7 +29,77 @@ try:
 except ImportError:  # pragma: no cover
     holidays = None
 
+try:
+    import optuna
+except ImportError:  # pragma: no cover
+    optuna = None
+
 logger = logging.getLogger(__name__)
+
+
+def tune_hyperparameters(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
+    use_xgb: bool = False,
+    n_trials: int = 100,
+) -> Dict:
+    """Tune hyperparameters using Optuna."""
+    if not optuna:
+        return {}
+
+    def objective(trial):
+        if use_xgb:
+            param = {
+                "objective": "reg:squarederror",
+                "eval_metric": "rmse",
+                "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
+                "learning_rate": trial.suggest_float(
+                    "learning_rate", 0.01, 0.3, log=True
+                ),
+                "max_depth": trial.suggest_int("max_depth", 3, 10),
+                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                "colsample_bytree": trial.suggest_float(
+                    "colsample_bytree", 0.6, 1.0
+                ),
+            }
+            model = xgb.XGBRegressor(**param)
+        else:
+            param = {
+                "objective": "regression",
+                "metric": "rmse",
+                "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
+                "learning_rate": trial.suggest_float(
+                    "learning_rate", 0.01, 0.3, log=True
+                ),
+                "num_leaves": trial.suggest_int("num_leaves", 20, 300),
+                "max_depth": trial.suggest_int("max_depth", 3, 12),
+                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                "colsample_bytree": trial.suggest_float(
+                    "colsample_bytree", 0.6, 1.0
+                ),
+            }
+            model = lgb.LGBMRegressor(**param)
+
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_val, y_val)],
+            eval_metric="rmse",
+            callbacks=[
+                lgb.early_stopping(10, verbose=False)
+                if not use_xgb
+                else xgb.callback.EarlyStopping(rounds=10)
+            ],
+        )
+        preds = model.predict(X_val)
+        rmse = np.sqrt(mean_squared_error(y_val, preds))
+        return rmse
+
+    study = optuna.create_study(direction="minimize")
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+    return study.best_params
 
 
 def _calendar_features(
@@ -53,8 +123,30 @@ def _calendar_features(
         except Exception:
             hol = {}
         df["is_holiday"] = [1 if ts.date() in hol else 0 for ts in index]
+        
+        # Add features for days until/since holiday
+        hol_dates = sorted([d for d in hol.keys()])
+        
+        df['holiday_date'] = pd.to_datetime(df.index.date)
+        
+        # Days since last holiday
+        last_hol = [hol_dates[hol_dates.index(d)-1] if d in hol_dates and hol_dates.index(d)>0 else pd.NaT for d in df['holiday_date']]
+        df['days_since_holiday'] = (df.index.date - pd.to_datetime(last_hol)).days
+        
+        # Days until next holiday
+        next_hol = [hol_dates[hol_dates.index(d)+1] if d in hol_dates and hol_dates.index(d) < len(hol_dates)-1 else pd.NaT for d in df['holiday_date']]
+        df['days_until_holiday'] = (pd.to_datetime(next_hol) - df.index.date).days
+        
+        df = df.drop(columns=['holiday_date'])
+        
+        # Fill NaN values for holiday features
+        df['days_since_holiday'] = df['days_since_holiday'].fillna(0)
+        df['days_until_holiday'] = df['days_until_holiday'].fillna(0)
+
     else:
         df["is_holiday"] = 0
+        df['days_since_holiday'] = np.nan
+        df['days_until_holiday'] = np.nan
 
     # cyclical encodings
     df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
@@ -66,12 +158,11 @@ def _calendar_features(
     return df
 
 
-def _augment_temperature_features(
+def _augment_weather_features(
     weather: pd.DataFrame, base_c: float = 18.0
 ) -> pd.DataFrame:
     """
     Add temperature, HDD, and CDD features if a temperature-like column exists.
-
     - Detect temp column from common names.
     - If values look like Kelvin (> 200), convert to C.
     - HDD = max(base - temp, 0)
@@ -102,6 +193,21 @@ def _augment_temperature_features(
     # piecewise heating/cooling slopes
     w["heating_15c"] = np.clip(15 - temp, 0, None)
     w["cooling_22c"] = np.clip(temp - 22, 0, None)
+
+    # Add other weather features if they exist
+    if "wind_speed" in w.columns and "wind_direction" in w.columns:
+        w["wind_speed_ms"] = np.sqrt(w["wind_speed"]**2 + w["wind_direction"]**2)
+        w["wind_chill"] = w["temp_c"] - 0.5 * w["wind_speed_ms"]
+
+    if "humidity" in w.columns:
+        w["heat_index"] = w["temp_c"] + 0.5 * (w["humidity"] - 60)
+        
+    if "precipitation" in w.columns:
+        w["precipitation_h"] = w["precipitation"].diff()
+
+    if "cloudcover" in w.columns:
+        w['cloudcover_l'] = w['cloudcover'].shift(1)
+
     return w
 
 
@@ -115,7 +221,7 @@ def prepare_demand_features(
     load = load.sort_index()
     feats = _calendar_features(load.index, country=country)
     if weather is not None:
-        w = _augment_temperature_features(weather)
+        w = _augment_weather_features(weather)
         if isinstance(w.index, pd.DatetimeIndex):
             # Avoid backfilling with future values; fill missing with 0 as a neutral fallback.
             w = w.reindex(load.index).ffill().fillna(0)
@@ -155,6 +261,7 @@ def train_demand_models(
     y: pd.Series,
     quantiles=(0.1, 0.5, 0.9),
     use_xgb: bool = False,
+    tune_hyperparams: bool = False,
 ) -> Tuple[object, Dict[float, object], Dict[str, float]]:
     """Train a mean model and optional quantile models."""
     X_train, X_val, y_train, y_val = train_test_split(
@@ -162,7 +269,13 @@ def train_demand_models(
     )
     feature_list = list(X.columns)
 
-    mean_model = _make_model(use_xgb=use_xgb)
+    best_params = {}
+    if tune_hyperparams:
+        best_params = tune_hyperparameters(
+            X_train, y_train, X_val, y_val, use_xgb=use_xgb
+        )
+
+    mean_model = _make_model(use_xgb=use_xgb, **best_params)
     mean_model.fit(X_train, y_train)
     y_pred = mean_model.predict(X_val)
     if not hasattr(mean_model, "feature_list_"):
@@ -394,7 +507,7 @@ def build_future_error_features(
         feats = pd.concat(
             [
                 feats,
-                _augment_temperature_features(weather)
+                _augment_weather_features(weather)
                 .reindex(forecast.index)
                 .ffill()
                 .fillna(0),
@@ -415,3 +528,100 @@ def build_future_error_features(
             ).reindex(forecast.index)
     # Forward-fill only; never backfill time-series features with future values.
     return feats.ffill().fillna(0)
+
+
+def prepare_timeseries_dataset(
+    X: pd.DataFrame,
+    y: pd.Series,
+    country: str,
+    max_encoder_length: int = 168,
+    max_prediction_length: int = 24,
+) -> "TimeSeriesDataSet":
+    """Prepare a TimeSeriesDataSet for pytorch-forecasting."""
+    from pytorch_forecasting import TimeSeriesDataSet
+
+    data = X.copy()
+    data["target"] = y
+    data["time_idx"] = (data.index - data.index.min()).total_seconds() // 3600
+    data["time_idx"] = data["time_idx"].astype(int)
+    data["group"] = country
+
+    training_cutoff = data["time_idx"].max() - max_prediction_length
+
+    dataset = TimeSeriesDataSet(
+        data[lambda x: x.time_idx <= training_cutoff],
+        time_idx="time_idx",
+        target="target",
+        group_ids=["group"],
+        max_encoder_length=max_encoder_length,
+        max_prediction_length=max_prediction_length,
+        static_categoricals=["group"],
+        time_varying_known_reals=[
+            "hour",
+            "dow",
+            "month",
+            "is_weekend",
+            "is_dst_transition",
+            "is_holiday",
+            "days_since_holiday",
+            "days_until_holiday",
+            "hour_sin",
+            "hour_cos",
+            "dow_sin",
+            "dow_cos",
+            "month_sin",
+            "month_cos",
+            "temp_c",
+            "hdd_base18",
+            "cdd_base18",
+            "heating_15c",
+            "cooling_22c",
+            "wind_speed_ms",
+            "wind_chill",
+            "heat_index",
+            "precipitation_h",
+            "cloudcover_l",
+        ],
+        time_varying_unknown_reals=["target"],
+        # lag features are handled by pytorch-forecasting
+        allow_missing_timesteps=True,
+    )
+    return dataset
+
+
+def train_deep_learning_model(
+    dataset: "TimeSeriesDataSet",
+    max_epochs: int = 10,
+    gpus: int = 0,
+) -> Tuple["pl.LightningModule", "pl.Trainer"]:
+    """Train a deep learning model using pytorch-forecasting."""
+    import torch
+    import pytorch_lightning as pl
+    from pytorch_forecasting import NBeats
+    from pytorch_forecasting.data import TimeSeriesDataSet
+
+    train_dataloader = dataset.to_dataloader(train=True, batch_size=128, num_workers=0)
+    val_dataloader = dataset.to_dataloader(train=False, batch_size=128, num_workers=0)
+
+    trainer = pl.Trainer(
+        max_epochs=max_epochs,
+        gpus=gpus,
+        gradient_clip_val=0.1,
+        limit_train_batches=30,
+        callbacks=[],
+    )
+
+    net = NBeats.from_dataset(
+        dataset,
+        learning_rate=3e-2,
+        weight_decay=1e-2,
+        widths=[32, 512],
+        backcast_loss_ratio=0.1,
+    )
+
+    trainer.fit(
+        net,
+        train_dataloaders=train_dataloader,
+        val_dataloaders=val_dataloader,
+    )
+    return net, trainer
