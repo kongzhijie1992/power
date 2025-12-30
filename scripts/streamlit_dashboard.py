@@ -958,7 +958,7 @@ def demand_tab():
             f"Showing last {max_table_rows:,} rows (of {len(table_out):,}) for performance."
         )
         table_out = table_out.tail(max_table_rows)
-    st.dataframe(table_out, use_container_width=True)
+    st.dataframe(table_out, width="stretch")
 
     st.caption(
         f"{area} | timezone: {timezone} | points: {len(df):,} | span: {df.index.min()} → {df.index.max()}"
@@ -1858,7 +1858,7 @@ def merit_order_rank_tab():
                     "cum_capacity_mw",
                 ]
             ].tail(25),
-            use_container_width=True,
+            width="stretch",
         )
         return
 
@@ -1944,7 +1944,7 @@ def merit_order_rank_tab():
                 "cum_capacity_mw": "{:,.1f}",
             }
         ),
-        use_container_width=True,
+        width="stretch",
     )
 
 
@@ -2131,7 +2131,7 @@ def plants_tab():
         )
         .background_gradient(cmap="RdYlGn_r", subset=["srmc_eur_per_mwh"])
     )
-    st.dataframe(style, use_container_width=True)
+    st.dataframe(style, width="stretch")
 
 
 def plant_status_tab():
@@ -2358,11 +2358,36 @@ def plant_status_tab():
                 "availability_factor": "{:.2f}",
             }
         ),
-        use_container_width=True,
+        width="stretch",
     )
 
 
+def _render_help_panel() -> None:
+    st.markdown(
+        """
+**Quick help**
+- Contact: Zhijie Kong
+- Email: kong.zhijie1992@gmail.com
+- Contract me for **AWS_ACCESS_KEY_ID** and **AWS_SECRET_ACCESS_KEY** to access the data
+- Whatsapp: +44 - 07539119773""".strip()
+    )
+
+
+def _render_help_button() -> None:
+    if hasattr(st, "popover"):
+        with st.popover("Help"):
+            _render_help_panel()
+    else:
+        with st.expander("Help", expanded=False):
+            _render_help_panel()
+
+
 def main():
+    bar_left, bar_right = st.columns([0.85, 0.15])
+    with bar_left:
+        st.write("")
+    with bar_right:
+        _render_help_button()
     st.markdown(
         """
         <style>

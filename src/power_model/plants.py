@@ -306,13 +306,26 @@ def fetch_opsd_conventional(
             DATA_DIR / "external" / "opsd_conventional_power_plants.csv"
         )
     cache_out = resolve_write_path(cache_path)
-    if path_exists(cache_out) and not force:
-        try:
-            return read_frame(cache_out)
-        except (FileNotFoundError, OSError, ValueError):
-            pass
+    if not force:
+        if path_exists(cache_out):
+            try:
+                return read_frame(cache_out)
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+        if cache_path.exists():
+            try:
+                return pd.read_csv(cache_path)
+            except (FileNotFoundError, OSError, ValueError):
+                pass
     df = pd.read_csv(OPSD_URL)
-    write_frame(df, cache_out, index=False)
+    try:
+        write_frame(df, cache_out, index=False)
+    except Exception as exc:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(cache_path, index=False)
+        except Exception:
+            raise exc
     return df
 
 
@@ -348,11 +361,17 @@ def fetch_opsd_renewable(
             DATA_DIR / "external" / "opsd_renewable_power_plants_agg.csv"
         )
     cache_out = resolve_write_path(cache_path)
-    if path_exists(cache_out) and not force:
-        try:
-            return read_frame(cache_out)
-        except (FileNotFoundError, OSError, ValueError):
-            pass
+    if not force:
+        if path_exists(cache_out):
+            try:
+                return read_frame(cache_out)
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+        if cache_path.exists():
+            try:
+                return pd.read_csv(cache_path)
+            except (FileNotFoundError, OSError, ValueError):
+                pass
 
     usecols = [
         "electrical_capacity",
@@ -388,7 +407,14 @@ def fetch_opsd_renewable(
     grouped["additional_info"] = pd.NA
     grouped["lat"] = pd.NA
     grouped["lon"] = pd.NA
-    write_frame(grouped, cache_out, index=False)
+    try:
+        write_frame(grouped, cache_out, index=False)
+    except Exception as exc:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            grouped.to_csv(cache_path, index=False)
+        except Exception:
+            raise exc
     return grouped
 
 
