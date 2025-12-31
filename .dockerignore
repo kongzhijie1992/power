@@ -1,0 +1,17 @@
+.git
+.github
+.devcontainer
+.venv
+.poetry-cache
+catboost_info
+data
+notebooks
+tests
+__pycache__/
+*.pyc
+*.pyo
+*.log
+streamlit_dashboard*.log
+.env
+.env.*
+.streamlit/secrets.toml

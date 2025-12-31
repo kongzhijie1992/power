@@ -86,6 +86,21 @@ python scripts\run_uc_demo.py                             # unit commitment exam
 python scripts\fetch_entsoe_data.py --areas DE_LU FR IT ES NL BE --start-date 2023-01-01 --end-date 2025-12-31 --chunk-days 60 --merge-existing
 ```
 
+Container quickstart
+--------------------
+Build and run the Streamlit dashboard in Docker:
+
+```bash
+docker build -t power-dashboard .
+docker run --rm -p 8501:8501 --env-file .env power-dashboard
+```
+
+Or with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
 Sample data (optional)
 ----------------------
 Real data is already present; generate synthetic only if you want a minimal sandbox:
