@@ -2,6 +2,6 @@ services:
   dashboard:
     build: .
     ports:
-      - "8501:8501"
+      - "7860:7860"
     env_file:
       - .env

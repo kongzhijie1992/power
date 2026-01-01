@@ -98,7 +98,7 @@ Build and run the Streamlit dashboard in Docker:
 
 ```bash
 docker build -t power-dashboard .
-docker run --rm -p 8501:8501 --env-file .env power-dashboard
+docker run --rm -p 7860:7860 --env-file .env power-dashboard
 ```
 
 Or with Docker Compose:
