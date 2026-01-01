@@ -21,6 +21,8 @@ RUN poetry config virtualenvs.create false \
 
 COPY . .
 
+ENV PORT=8501
+
 EXPOSE 8501
 
-CMD ["streamlit", "run", "scripts/streamlit_dashboard.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
+CMD ["sh", "-c", "streamlit run scripts/streamlit_dashboard.py --server.address=0.0.0.0 --server.port=${PORT} --server.headless=true"]

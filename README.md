@@ -1,3 +1,9 @@
+---
+title: Power Stack Dashboard
+sdk: docker
+app_port: 8501
+---
+
 Power Stack Model — Europe (ENTSO-E + GFS + UC)
 ================================================
 
@@ -100,6 +106,17 @@ Or with Docker Compose:
 ```bash
 docker compose up --build
 ```
+
+Hugging Face Spaces (Docker)
+----------------------------
+1. Create a new Space and choose the Docker SDK.
+2. Push this repo to the Space (or connect the Space to this repo).
+3. Add Space secrets (Settings -> Secrets) if your S3 bucket is private:
+   - `AWS_ACCESS_KEY_ID`
+   - `AWS_SECRET_ACCESS_KEY`
+   - `AWS_DEFAULT_REGION` (defaults to `eu-north-1` if omitted)
+   - `S3_BUCKET` (defaults to `zkong-power` if omitted)
+   - `S3_PREFIX` (defaults to `stack-model/data` if omitted)
 
 Sample data (optional)
 ----------------------
