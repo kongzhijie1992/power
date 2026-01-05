@@ -32,3 +32,4 @@ catboost_info/
 .streamlit/secrets.toml
 .streamlit/secrets.toml.local
 .poetry-cache
+*.log

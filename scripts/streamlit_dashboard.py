@@ -2368,7 +2368,7 @@ def _render_help_panel() -> None:
 **Quick help**
 - Contact: Zhijie Kong
 - Email: kong.zhijie1992@gmail.com
-- Contract me for **AWS_ACCESS_KEY_ID** and **AWS_SECRET_ACCESS_KEY** to access the data
+- Use `.streamlit/secrets.toml.example` as a template for AWS credentials
 - Whatsapp: +44 - 07539119773""".strip()
     )
 
