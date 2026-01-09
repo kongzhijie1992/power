@@ -572,16 +572,30 @@ def load_demand_data(area: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
     if not actual.empty:
         merged["actual_load"] = actual.reindex(idx_union)
     if "tso_forecast" in fc.columns:
-        merged["tso_forecast"] = fc["tso_forecast"].reindex(idx_union)
-        if tso_pub is not None and not tso_pub.empty:
-            merged["tso_publication_time_utc"] = tso_pub.reindex(idx_union)
-        elif "tso_publication_time_utc" in fc.columns:
+        fc_tso = fc["tso_forecast"].reindex(idx_union)
+        if not tso.empty:
+            merged["tso_forecast"] = fc_tso.combine_first(
+                tso.reindex(idx_union)
+            )
+        else:
+            merged["tso_forecast"] = fc_tso
+        pub_series = None
+        if "tso_publication_time_utc" in fc.columns:
             pub = pd.to_datetime(
                 fc["tso_publication_time_utc"], errors="coerce"
             )
             if getattr(pub.dt, "tz", None) is not None:
                 pub = pub.dt.tz_convert("UTC").dt.tz_localize(None)
-            merged["tso_publication_time_utc"] = pub.reindex(idx_union)
+            pub_series = pub.reindex(idx_union)
+        if tso_pub is not None and not tso_pub.empty:
+            tso_pub = tso_pub.reindex(idx_union)
+            pub_series = (
+                pub_series.combine_first(tso_pub)
+                if pub_series is not None
+                else tso_pub
+            )
+        if pub_series is not None:
+            merged["tso_publication_time_utc"] = pub_series
     elif not tso.empty:
         merged["tso_forecast"] = tso.reindex(idx_union)
         if tso_pub is not None and not tso_pub.empty:
@@ -782,8 +796,8 @@ def demand_tab():
                 {
                     "stack": "q_band",
                     "hide_line": True,
-                    "color": "#f2a3a3",
-                    "area_color": "rgba(242,163,163,0.45)",
+                    "color": "#7fcf7f",
+                    "area_color": "rgba(127,207,127,0.45)",
                     "area_opacity": 0.45,
                 },
             )
@@ -889,7 +903,7 @@ def demand_tab():
             (
                 "Model (corrected)",
                 _series_to_list(plot_df["corrected_mean"]),
-                {"color": "#1f77b4", "width": 1.5, "type_": "dashed"},
+                {"color": "#1b5e20", "width": 1.5, "type_": "dashed"},
             )
         )
 
@@ -938,8 +952,8 @@ def demand_tab():
         )
     preferred_cols = [
         "actual_load",
-        "tso_forecast",
         "actual_update_time_utc",
+        "tso_forecast",
         "tso_update_time_utc",
         "corrected_mean",
         "corrected_q10",

@@ -16,7 +16,7 @@ from sklearn.base import RegressorMixin
 
 try:
     import lightgbm as lgb
-except ImportError:  # pragma: no cover
+except (ImportError, OSError):  # pragma: no cover
     lgb = None
 
 try:
@@ -126,27 +126,39 @@ def _calendar_features(
         
         # Add features for days until/since holiday
         hol_dates = sorted([d for d in hol.keys()])
-        
-        df['holiday_date'] = pd.to_datetime(df.index.date)
-        
-        # Days since last holiday
-        last_hol = [hol_dates[hol_dates.index(d)-1] if d in hol_dates and hol_dates.index(d)>0 else pd.NaT for d in df['holiday_date']]
-        df['days_since_holiday'] = (df.index.date - pd.to_datetime(last_hol)).days
-        
-        # Days until next holiday
-        next_hol = [hol_dates[hol_dates.index(d)+1] if d in hol_dates and hol_dates.index(d) < len(hol_dates)-1 else pd.NaT for d in df['holiday_date']]
-        df['days_until_holiday'] = (pd.to_datetime(next_hol) - df.index.date).days
-        
-        df = df.drop(columns=['holiday_date'])
-        
-        # Fill NaN values for holiday features
-        df['days_since_holiday'] = df['days_since_holiday'].fillna(0)
-        df['days_until_holiday'] = df['days_until_holiday'].fillna(0)
+        if hol_dates:
+            hol_idx = pd.DatetimeIndex(pd.to_datetime(hol_dates))
+            dates = pd.Series(
+                pd.to_datetime(df.index.normalize()), index=df.index
+            )
+            pos_prev = hol_idx.searchsorted(dates, side="right") - 1
+            last_hol = pd.Series(pd.NaT, index=df.index)
+            valid_prev = pos_prev >= 0
+            if valid_prev.any():
+                last_hol.loc[valid_prev] = hol_idx[
+                    pos_prev[valid_prev]
+                ].values
+            days_since = (dates - last_hol).dt.days
+
+            pos_next = hol_idx.searchsorted(dates, side="left")
+            next_hol = pd.Series(pd.NaT, index=df.index)
+            valid_next = pos_next < len(hol_idx)
+            if valid_next.any():
+                next_hol.loc[valid_next] = hol_idx[
+                    pos_next[valid_next]
+                ].values
+            days_until = (next_hol - dates).dt.days
+
+            df["days_since_holiday"] = days_since.fillna(0)
+            df["days_until_holiday"] = days_until.fillna(0)
+        else:
+            df["days_since_holiday"] = 0
+            df["days_until_holiday"] = 0
 
     else:
         df["is_holiday"] = 0
-        df['days_since_holiday'] = np.nan
-        df['days_until_holiday'] = np.nan
+        df["days_since_holiday"] = np.nan
+        df["days_until_holiday"] = np.nan
 
     # cyclical encodings
     df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
@@ -455,7 +467,7 @@ def prepare_error_features(
     feats = _calendar_features(df.index, country=country)
     if weather is not None:
         w = (
-            _augment_temperature_features(weather)
+            _augment_weather_features(weather)
             .reindex(df.index)
             .ffill()
             .fillna(0)
