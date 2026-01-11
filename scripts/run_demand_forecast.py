@@ -82,6 +82,7 @@ def _train_direct_model(area: str, days: int, weather_path: str):
     """Fallback: direct demand model without TSO forecast baseline."""
     load_series = load_demand_series(area).sort_index()
     load_series = _limit_by_days(load_series, days)
+    country_code = area.split("_")[0][:2] if area else None
     logger.info(
         "Loaded demand (direct): %d rows, %s → %s",
         len(load_series),
@@ -91,7 +92,9 @@ def _train_direct_model(area: str, days: int, weather_path: str):
     weather_df = add_gfs_features(
         load_series.index, lat=0, lon=0, weather_csv=weather_path
     )
-    X, y = prepare_demand_features(load_series, weather_df)
+    X, y = prepare_demand_features(
+        load_series, weather_df, country=country_code
+    )
     mean_model, q_models, stats = train_demand_models(X, y)
     logger.info("[direct] Demand model stats: %s", stats)
 
@@ -105,7 +108,7 @@ def _train_direct_model(area: str, days: int, weather_path: str):
     combined_weather = weather_df.reindex(combined_index).ffill().fillna(0)
 
     def build_features(idx: pd.DatetimeIndex) -> pd.DataFrame:
-        feats = df_mod._calendar_features(idx)
+        feats = df_mod._calendar_features(idx, country=country_code)
         feats = pd.concat([feats, combined_weather.loc[idx]], axis=1)
         for lag in (24, 168):
             shifted = load_series.reindex(combined_index).shift(lag)
