@@ -57,7 +57,6 @@ def main(area: str, synthetic: bool = True, config_path: str | None = None, over
         prices = synthetic_area_series(area, days=history_days)
     else:
         # attempt to read entsoe.api_key from config
-        from pathlib import Path
         import yaml
 
         cfg_path = Path(__file__).parents[1] / "src" / "config.yaml"
