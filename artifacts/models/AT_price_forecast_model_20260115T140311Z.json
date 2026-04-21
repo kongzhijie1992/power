@@ -1,0 +1,29 @@
+{
+  "area": "AT",
+  "artifact_hash": "9c298d589a2158eb513cb52191144518a2acab2cb0c04f1df14fca0f712fa4a1",
+  "artifact_path": "artifacts/models/AT_price_forecast_model_20260115T140311Z.bin",
+  "artifact_type": "NoneType",
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:03:11.465189+00:00",
+  "dataset_hash": "92de7c13dc39be02a2388e7af9cfcb36514fd0e99c458b4586fdc86f19c71151",
+  "metrics": {
+    "note": "lightgbm not installed",
+    "rmse": null
+  },
+  "name": "AT_price_forecast"
+}

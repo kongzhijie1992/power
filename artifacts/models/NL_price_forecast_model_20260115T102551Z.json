@@ -1,0 +1,29 @@
+{
+  "area": "NL",
+  "artifact_hash": "9c298d589a2158eb513cb52191144518a2acab2cb0c04f1df14fca0f712fa4a1",
+  "artifact_path": "artifacts/models/NL_price_forecast_model_20260115T102551Z.bin",
+  "artifact_type": "NoneType",
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:25:51.451466+00:00",
+  "dataset_hash": "2e8e0cb73669db4949bddf1529323ec11876d42a672a34860ea078580ce22b7b",
+  "metrics": {
+    "note": "lightgbm not installed",
+    "rmse": null
+  },
+  "name": "NL_price_forecast"
+}

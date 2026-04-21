@@ -1,0 +1,30 @@
+{
+  "area": "NO2",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:32:28.789617+00:00",
+  "hash": "da0db97c8c28a92907247ce94e40109d0300796ebbf6f95c6685e82c3d63b006",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "NO2_prices",
+  "rows": 17513,
+  "source_path": null,
+  "synthetic": false
+}

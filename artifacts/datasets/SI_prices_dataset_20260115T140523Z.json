@@ -1,0 +1,30 @@
+{
+  "area": "SI",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:05:23.060973+00:00",
+  "hash": "9d0d63d7795a273adcf6e7e984ee827b9541ce3c9454722d77e264b65e3a3882",
+  "index_end": "2026-01-15 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "SI_prices",
+  "rows": 17904,
+  "source_path": null,
+  "synthetic": false
+}

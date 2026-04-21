@@ -1,0 +1,29 @@
+{
+  "area": "LT",
+  "artifact_hash": "9c298d589a2158eb513cb52191144518a2acab2cb0c04f1df14fca0f712fa4a1",
+  "artifact_path": "artifacts/models/LT_price_forecast_model_20260115T103340Z.bin",
+  "artifact_type": "NoneType",
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:33:40.812311+00:00",
+  "dataset_hash": "4f9522bdff5c8489021ad7ac34a7a0bc9a7c6de4de2d3496fa6fdca361d015a4",
+  "metrics": {
+    "note": "lightgbm not installed",
+    "rmse": null
+  },
+  "name": "LT_price_forecast"
+}

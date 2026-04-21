@@ -1,0 +1,30 @@
+{
+  "area": "DK2",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:06:38.356747+00:00",
+  "hash": "327f479b836a0040eddb5229ec869ee9fa291164862ddc089a5edb613f6e0a87",
+  "index_end": "2026-01-15 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "DK2_prices",
+  "rows": 17890,
+  "source_path": null,
+  "synthetic": false
+}

@@ -1,0 +1,30 @@
+{
+  "area": "BE",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:26:09.983553+00:00",
+  "hash": "5096bb5abff049ab2489ec7cc89d79b3c75eb63bf552da6ceea69e7c7dd0ccae",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "BE_prices",
+  "rows": 17558,
+  "source_path": null,
+  "synthetic": false
+}

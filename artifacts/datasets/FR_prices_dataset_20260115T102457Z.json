@@ -1,0 +1,30 @@
+{
+  "area": "FR",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:24:57.060693+00:00",
+  "hash": "49b6adfd268c8b5e2e6cd9bd9b39daa13bd124b2dc651eba8602fcaf8f2e0219",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "FR_prices",
+  "rows": 17304,
+  "source_path": null,
+  "synthetic": false
+}

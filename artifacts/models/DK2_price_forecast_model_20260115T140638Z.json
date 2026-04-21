@@ -1,0 +1,29 @@
+{
+  "area": "DK2",
+  "artifact_hash": "9c298d589a2158eb513cb52191144518a2acab2cb0c04f1df14fca0f712fa4a1",
+  "artifact_path": "artifacts/models/DK2_price_forecast_model_20260115T140638Z.bin",
+  "artifact_type": "NoneType",
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:06:38.388424+00:00",
+  "dataset_hash": "327f479b836a0040eddb5229ec869ee9fa291164862ddc089a5edb613f6e0a87",
+  "metrics": {
+    "note": "lightgbm not installed",
+    "rmse": null
+  },
+  "name": "DK2_price_forecast"
+}

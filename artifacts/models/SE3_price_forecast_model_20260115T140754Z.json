@@ -1,0 +1,29 @@
+{
+  "area": "SE3",
+  "artifact_hash": "9c298d589a2158eb513cb52191144518a2acab2cb0c04f1df14fca0f712fa4a1",
+  "artifact_path": "artifacts/models/SE3_price_forecast_model_20260115T140754Z.bin",
+  "artifact_type": "NoneType",
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:07:54.031036+00:00",
+  "dataset_hash": "9e7081fdb68a6d7e71fac9dfd739de40c6decca11dc1252a79f2fe61695ddbc2",
+  "metrics": {
+    "note": "lightgbm not installed",
+    "rmse": null
+  },
+  "name": "SE3_price_forecast"
+}

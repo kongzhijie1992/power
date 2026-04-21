@@ -1,0 +1,30 @@
+{
+  "area": "PL",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:27:22.239806+00:00",
+  "hash": "fa69bdd485f7d7db81ed45b6653ef554852bb5a01da369f68ea5af6e639e44d5",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "PL_prices",
+  "rows": 17528,
+  "source_path": null,
+  "synthetic": false
+}

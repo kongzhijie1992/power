@@ -1,0 +1,30 @@
+{
+  "area": "FI",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:06:57.307262+00:00",
+  "hash": "c56c29f6b09360c40f239bcd21e5f32b8214bfc6625364a26d296d469c0a6c4a",
+  "index_end": "2026-01-15 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "FI_prices",
+  "rows": 17710,
+  "source_path": null,
+  "synthetic": false
+}

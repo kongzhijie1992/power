@@ -1,0 +1,30 @@
+{
+  "area": "NL",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:25:51.438592+00:00",
+  "hash": "2e8e0cb73669db4949bddf1529323ec11876d42a672a34860ea078580ce22b7b",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "NL_prices",
+  "rows": 17513,
+  "source_path": null,
+  "synthetic": false
+}

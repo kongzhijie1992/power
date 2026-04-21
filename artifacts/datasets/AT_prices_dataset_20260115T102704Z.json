@@ -1,0 +1,30 @@
+{
+  "area": "AT",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:27:04.379074+00:00",
+  "hash": "3e29a3821d0b98cfbe0bc06190c8d894a9cd79891c431db390c5710e3c46dbaa",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "AT_prices",
+  "rows": 17616,
+  "source_path": null,
+  "synthetic": false
+}

@@ -1,0 +1,30 @@
+{
+  "area": "BG",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:28:53.337575+00:00",
+  "hash": "4c5dcf8982e6f420fd9d31acafa0a822d31d824d25e2f65e331fb8e6fb7866d1",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "BG_prices",
+  "rows": 17333,
+  "source_path": null,
+  "synthetic": false
+}

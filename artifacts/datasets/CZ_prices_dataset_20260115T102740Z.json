@@ -1,0 +1,30 @@
+{
+  "area": "CZ",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:27:40.798409+00:00",
+  "hash": "55850fb3d8e9bc988efa6453af7aba7cb7cc589eba68cad8b3b3983e895737a2",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "CZ_prices",
+  "rows": 17502,
+  "source_path": null,
+  "synthetic": false
+}

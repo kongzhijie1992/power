@@ -1,0 +1,30 @@
+{
+  "area": "LV",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:33:58.398342+00:00",
+  "hash": "e0d4dc1c45c87a1902dff91269c44b8b25682bf8f317c2bddeb85922a232a6e4",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "LV_prices",
+  "rows": 17443,
+  "source_path": null,
+  "synthetic": false
+}

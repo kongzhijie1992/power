@@ -1,0 +1,29 @@
+{
+  "area": "DE_LU",
+  "artifact_hash": "9c298d589a2158eb513cb52191144518a2acab2cb0c04f1df14fca0f712fa4a1",
+  "artifact_path": "artifacts/models/DE_LU_price_forecast_model_20260115T140039Z.bin",
+  "artifact_type": "NoneType",
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:00:39.594194+00:00",
+  "dataset_hash": "9672e2637ff9a5e10517eac96cf696fce36fc45b70139ba01ee614bf44e6b39e",
+  "metrics": {
+    "note": "lightgbm not installed",
+    "rmse": null
+  },
+  "name": "DE_LU_price_forecast"
+}

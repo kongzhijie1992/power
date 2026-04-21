@@ -1,0 +1,30 @@
+{
+  "area": "LT",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T10:33:40.790961+00:00",
+  "hash": "4f9522bdff5c8489021ad7ac34a7a0bc9a7c6de4de2d3496fa6fdca361d015a4",
+  "index_end": "2025-12-31 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "LT_prices",
+  "rows": 17449,
+  "source_path": null,
+  "synthetic": false
+}

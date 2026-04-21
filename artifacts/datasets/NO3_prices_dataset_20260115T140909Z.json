@@ -1,0 +1,30 @@
+{
+  "area": "NO3",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:09:09.630345+00:00",
+  "hash": "cdafcbf9cc1ebec430a95524d3727c2410ba11f6811fde9f9fe359ce5a9e9d03",
+  "index_end": "2026-01-15 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "NO3_prices",
+  "rows": 17713,
+  "source_path": null,
+  "synthetic": false
+}

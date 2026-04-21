@@ -1,0 +1,30 @@
+{
+  "area": "DE_LU",
+  "columns": [
+    "value"
+  ],
+  "config": {
+    "features": {
+      "enable_quantile_models": true,
+      "use_weather": true
+    },
+    "model": {
+      "cv_splits": 3,
+      "lgbm_params": {
+        "metric": "rmse",
+        "num_leaves": 31,
+        "objective": "regression",
+        "verbosity": -1
+      },
+      "num_boost_round": 200
+    }
+  },
+  "created_at": "2026-01-15T14:00:39.581001+00:00",
+  "hash": "9672e2637ff9a5e10517eac96cf696fce36fc45b70139ba01ee614bf44e6b39e",
+  "index_end": "2026-01-15 23:00:00+00:00",
+  "index_start": "2023-12-29 00:00:00+00:00",
+  "name": "DE_LU_prices",
+  "rows": 17976,
+  "source_path": null,
+  "synthetic": false
+}
